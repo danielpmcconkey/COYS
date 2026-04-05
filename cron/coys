@@ -1,0 +1,13 @@
+# COYS — Bot Army Cron
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+COYS_HOME=/media/dan/fdrive/codeprojects/COYS
+
+# Scotty — 06:00 ET (10:00 UTC)
+0 10 * * * dan $COYS_HOME/bin/run-agent scotty
+
+# Marcus — 17:00 ET (21:00 UTC)
+0 21 * * * dan $COYS_HOME/bin/run-agent marcus
+
+# Bede — 00:00, 02:00, 04:00 ET (04:00, 06:00, 08:00 UTC)
+0 4,6,8 * * * dan $COYS_HOME/bin/run-agent bede

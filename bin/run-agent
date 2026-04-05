@@ -1,0 +1,102 @@
+#!/media/dan/fdrive/codeprojects/COYS/.venv/bin/python3
+"""COYS cron agent runner.
+
+Usage: run-agent <agent-name>
+
+Reads the agent's config.yaml, invokes claude -p in the agent's directory,
+logs the result. For delivery=capture agents, posts output to Discord.
+For delivery=self agents, the agent posts its own report.
+"""
+
+import subprocess
+import sys
+from pathlib import Path
+
+COYS_HOME = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(COYS_HOME))
+
+from lib.config import load_config
+from lib.discord_post import get_token, post_message
+from lib import log
+
+MODEL_MAP = {
+    "sonnet": "sonnet",
+    "opus": "opus",
+    "haiku": "haiku",
+}
+
+
+def main():
+    if len(sys.argv) != 2:
+        print(f"Usage: {sys.argv[0]} <agent-name>", file=sys.stderr)
+        sys.exit(1)
+
+    agent_name = sys.argv[1]
+    config = load_config(agent_name)
+    logger = log.setup(agent_name)
+
+    if not config.cron:
+        logger.error(f"Agent {agent_name} has no cron config")
+        sys.exit(1)
+
+    agent_dir = COYS_HOME / "agents" / agent_name
+
+    cmd = [
+        "claude",
+        "-p", config.cron.prompt,
+        "--model", MODEL_MAP.get(config.model, config.model),
+        "--permission-mode", "dontAsk",
+        "--allowed-tools", "Read Write Edit Bash Grep Glob",
+        "--no-session-persistence",
+        "--output-format", "text",
+    ]
+
+    for d in config.extra_dirs:
+        cmd.extend(["--add-dir", d])
+
+    logger.info(f"Starting cron run for {agent_name}")
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(agent_dir),
+            capture_output=True,
+            text=True,
+            timeout=config.cron.timeout_seconds,
+        )
+
+        logger.info(f"Exit code: {result.returncode}")
+        if result.stdout:
+            logger.info(f"Output:\n{result.stdout[:2000]}")
+        if result.stderr:
+            logger.warning(f"Stderr:\n{result.stderr[:2000]}")
+
+        if config.cron.delivery == "capture" and result.stdout.strip():
+            token = get_token(config.discord.token_pass)
+            post_message(config.discord.channel_id, token, result.stdout.strip())
+            logger.info("Delivered output to Discord")
+
+    except subprocess.TimeoutExpired:
+        logger.error(f"Timed out after {config.cron.timeout_seconds}s")
+        _alert(config, logger, f"timed out after {config.cron.timeout_seconds}s")
+
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        _alert(config, logger, str(e))
+
+
+def _alert(config, logger, msg):
+    """Post an error alert to the agent's Discord channel."""
+    try:
+        token = get_token(config.discord.token_pass)
+        post_message(
+            config.discord.channel_id,
+            token,
+            f"{config.emoji} **{config.name}** error: {msg}",
+        )
+    except Exception as e:
+        logger.error(f"Failed to post alert: {e}")
+
+
+if __name__ == "__main__":
+    main()

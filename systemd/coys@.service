@@ -1,0 +1,14 @@
+[Unit]
+Description=COYS Discord Bot — %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/media/dan/fdrive/codeprojects/COYS/bin/listen %i
+Restart=on-failure
+RestartSec=30
+Environment=COYS_HOME=/media/dan/fdrive/codeprojects/COYS
+
+[Install]
+WantedBy=default.target

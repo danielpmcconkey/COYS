@@ -1,0 +1,11 @@
+logs/
+*.pyc
+__pycache__/
+.venv/
+*.token
+.pgpass
+*.secret*
+.env
+*.egg-info/
+dist/
+build/

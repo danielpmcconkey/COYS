@@ -1,0 +1,14 @@
+name: Scotty
+emoji: "🔧"
+mode: cron
+model: sonnet
+
+discord:
+  channel_id: "1484232297644298250"
+  token_pass: "coys/scotty/discord-token"
+
+cron:
+  schedule: "0 10 * * *"  # 06:00 ET in UTC
+  timeout_seconds: 600
+  prompt: "Run your daily health check. Post the report to #engine-room."
+  delivery: self

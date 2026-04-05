@@ -1,0 +1,14 @@
+name: Marcus
+emoji: "🏛️"
+mode: dual
+model: sonnet
+
+discord:
+  channel_id: "1483924993145438420"
+  token_pass: "coys/marcus/discord-token"
+
+cron:
+  schedule: "0 21 * * *"  # 17:00 ET in UTC
+  timeout_seconds: 900
+  prompt: "Build tonight's viewing programme. Run run_daily.py, curate the news block, build the playlist, post the digest to #marcus_museum."
+  delivery: self

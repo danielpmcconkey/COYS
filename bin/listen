@@ -1,0 +1,128 @@
+#!/media/dan/fdrive/codeprojects/COYS/.venv/bin/python3
+"""COYS interactive agent listener.
+
+Usage: listen <agent-name>
+
+Connects to Discord with the agent's bot token, listens for messages in the
+configured channel, and routes them through claude -p. Runs as a long-lived
+systemd service.
+"""
+
+import asyncio
+import subprocess
+import sys
+from pathlib import Path
+
+COYS_HOME = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(COYS_HOME))
+
+from lib.config import load_config
+from lib.discord_post import get_token
+from lib import log
+
+import discord
+
+MODEL_MAP = {
+    "sonnet": "sonnet",
+    "opus": "opus",
+    "haiku": "haiku",
+}
+
+
+def invoke_agent(agent_name: str, config, message_text: str, logger) -> str:
+    """Run claude -p with the user's message and return the response."""
+    agent_dir = COYS_HOME / "agents" / agent_name
+
+    cmd = [
+        "claude",
+        "-p", f"Dan says: {message_text}",
+        "--model", MODEL_MAP.get(config.model, config.model),
+        "--permission-mode", "dontAsk",
+        "--allowed-tools", "Read Write Edit Bash Grep Glob",
+        "--no-session-persistence",
+        "--output-format", "text",
+    ]
+
+    for d in config.extra_dirs:
+        cmd.extend(["--add-dir", d])
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(agent_dir),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        if result.returncode != 0:
+            logger.error(f"claude -p failed: {result.stderr[:500]}")
+            return "Something went wrong. Check the logs."
+
+        return result.stdout.strip() or "(no response)"
+
+    except subprocess.TimeoutExpired:
+        logger.error("claude -p timed out (120s)")
+        return "I'm taking too long. Try again?"
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        return f"Error: {e}"
+
+
+def main():
+    if len(sys.argv) != 2:
+        print(f"Usage: {sys.argv[0]} <agent-name>", file=sys.stderr)
+        sys.exit(1)
+
+    agent_name = sys.argv[1]
+    config = load_config(agent_name)
+    logger = log.setup(agent_name)
+
+    token = get_token(config.discord.token_pass)
+
+    intents = discord.Intents.default()
+    intents.message_content = True
+    client = discord.Client(intents=intents)
+
+    @client.event
+    async def on_ready():
+        logger.info(f"Connected as {client.user} ({agent_name})")
+
+    @client.event
+    async def on_message(message):
+        if message.author == client.user:
+            return
+
+        # Respond in configured channel (mention required) or DMs
+        is_dm = isinstance(message.channel, discord.DMChannel)
+        is_channel = str(message.channel.id) == config.discord.channel_id
+        is_mentioned = client.user.mentioned_in(message)
+
+        if not (is_dm or (is_channel and is_mentioned)):
+            return
+
+        logger.info(f"Message from {message.author}: {message.content[:200]}")
+
+        async with message.channel.typing():
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None, invoke_agent, agent_name, config, message.content, logger
+            )
+
+        # Send response, chunking if needed
+        while response:
+            if len(response) <= 2000:
+                await message.channel.send(response)
+                break
+            split = response.rfind("\n", 0, 2000)
+            if split == -1:
+                split = 2000
+            await message.channel.send(response[:split])
+            response = response[split:].lstrip("\n")
+
+    logger.info(f"Starting listener for {agent_name}")
+    client.run(token, log_handler=None)
+
+
+if __name__ == "__main__":
+    main()
