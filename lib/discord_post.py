@@ -11,6 +11,7 @@ Handles chunking for Discord's 2000 character limit.
 import argparse
 import subprocess
 import sys
+from pathlib import Path
 
 import requests
 
@@ -18,8 +19,10 @@ DISCORD_API = "https://discord.com/api/v10"
 MAX_LENGTH = 2000
 
 
-def get_token(pass_path: str) -> str:
-    """Read a bot token from the pass store."""
+def get_token(pass_path: str = "", token_file: str = "") -> str:
+    """Read a bot token from a file or the pass store."""
+    if token_file:
+        return Path(token_file).read_text().strip()
     return subprocess.check_output(
         ["pass", "show", pass_path], text=True
     ).strip()
@@ -60,9 +63,9 @@ def _chunk(text: str) -> list[str]:
 def main():
     parser = argparse.ArgumentParser(description="Post to Discord")
     parser.add_argument("--channel", required=True, help="Discord channel ID")
-    parser.add_argument(
-        "--token-pass", required=True, help="pass store path for bot token"
-    )
+    token_group = parser.add_mutually_exclusive_group(required=True)
+    token_group.add_argument("--token-pass", help="pass store path for bot token")
+    token_group.add_argument("--token-file", help="path to plain-text token file")
     parser.add_argument(
         "message", nargs="?", help="Message (or pipe via stdin)"
     )
@@ -75,7 +78,7 @@ def main():
         print("No message provided", file=sys.stderr)
         sys.exit(1)
 
-    token = get_token(args.token_pass)
+    token = get_token(args.token_pass or "", args.token_file or "")
     post_message(args.channel, token, message)
 
 

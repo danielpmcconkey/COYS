@@ -2,22 +2,23 @@
 """Database operations for Marcus. All SQL lives here.
 
 Uses the marcus schema in the openclaw database.
-Connection credentials from pass store (openclaw/marcus/pgpass).
+Connection credentials from ~/.pgpass (standard pgpass format: host:port:db:user:password).
 """
 
 import json
-import subprocess
+import os
 import sys
 
 import psycopg2
 import psycopg2.extras
 
+PGPASS_FILE = os.path.expanduser("~/.pgpass")
+
 
 def _read_pgpass():
-    """Read connection params from pass store."""
-    line = subprocess.check_output(
-        ["pass", "show", "openclaw/marcus/pgpass"], text=True
-    ).strip()
+    """Read connection params from pgpass file."""
+    with open(PGPASS_FILE) as f:
+        line = f.read().strip()
     host, port, dbname, user, password = line.split(":")
     return dict(host=host, port=int(port), dbname=dbname, user=user, password=password)
 

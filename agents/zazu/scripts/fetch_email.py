@@ -1,9 +1,8 @@
-#!/home/dan/.openclaw/skills/morning-report/scripts/.venv/bin/python3
+#!/usr/bin/env python3
 """Fetch overnight Gmail messages via the Gmail API."""
 
 import json
 import os
-import subprocess
 import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -14,35 +13,35 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
-PASS_GMAIL_CREDS = "openclaw/zazu/gmail-credentials"
-PASS_GMAIL_TOKEN = "openclaw/zazu/gmail-token"
+GMAIL_CREDS_FILE = os.path.expanduser("~/.gmail-credentials")
+GMAIL_TOKEN_FILE = os.path.expanduser("~/.gmail-token")
 
 
-def _pass_show(entry):
-    """Read an entry from pass store."""
-    return subprocess.check_output(["pass", "show", entry], text=True)
+def _read_secret(filepath):
+    """Read a secret from a plain-text file."""
+    with open(filepath) as f:
+        return f.read()
 
 
-def _pass_insert(entry, content):
-    """Write content to pass store."""
-    subprocess.run(
-        ["pass", "insert", "-m", "-f", entry],
-        input=content, text=True, check=True,
-    )
+def _write_secret(filepath, content):
+    """Write content to a secret file (mode 600)."""
+    with open(filepath, "w") as f:
+        f.write(content)
+    os.chmod(filepath, 0o600)
 
 
 def get_credentials():
     creds = None
     try:
-        token_json = _pass_show(PASS_GMAIL_TOKEN)
+        token_json = _read_secret(GMAIL_TOKEN_FILE)
         creds = Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
-    except (subprocess.CalledProcessError, json.JSONDecodeError):
+    except (FileNotFoundError, json.JSONDecodeError):
         pass
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            creds_json = _pass_show(PASS_GMAIL_CREDS)
+            creds_json = _read_secret(GMAIL_CREDS_FILE)
             with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
                 f.write(creds_json)
                 tmp_path = f.name
@@ -51,7 +50,7 @@ def get_credentials():
                 creds = flow.run_local_server(port=0)
             finally:
                 os.unlink(tmp_path)
-        _pass_insert(PASS_GMAIL_TOKEN, creds.to_json())
+        _write_secret(GMAIL_TOKEN_FILE, creds.to_json())
     return creds
 
 

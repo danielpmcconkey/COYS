@@ -98,7 +98,7 @@ Post a report to `#archives`:
 ```bash
 python3 /media/dan/fdrive/codeprojects/COYS/lib/discord_post.py \
   --channel 1482354239748571206 \
-  --token-pass coys/bede/discord-token \
+  --token-file /home/bede/.discord-token \
   "YOUR REPORT HERE"
 ```
 

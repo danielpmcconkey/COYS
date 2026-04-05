@@ -5,7 +5,7 @@ model: sonnet
 
 discord:
   channel_id: "1487189344639910089"
-  token_pass: "coys/gabi/discord-token"
+  token_file: "/home/gabi/.discord-token"
 
 extra_dirs:
   - /media/dan/fdrive/codeprojects/aprendiendo

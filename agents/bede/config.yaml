@@ -5,7 +5,7 @@ model: opus
 
 discord:
   channel_id: "1482354239748571206"
-  token_pass: "coys/bede/discord-token"
+  token_file: "/home/bede/.discord-token"
 
 cron:
   schedule: "0 4,6,8 * * *"  # 00:00, 02:00, 04:00 ET in UTC

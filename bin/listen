@@ -78,7 +78,7 @@ def main():
     config = load_config(agent_name)
     logger = log.setup(agent_name)
 
-    token = get_token(config.discord.token_pass)
+    token = get_token(config.discord.token_pass, config.discord.token_file)
 
     intents = discord.Intents.default()
     intents.message_content = True

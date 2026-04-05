@@ -96,7 +96,7 @@ Post to `#marcus_museum`:
 ```bash
 python3 /media/dan/fdrive/codeprojects/COYS/lib/discord_post.py \
   --channel 1483924993145438420 \
-  --token-pass coys/marcus/discord-token \
+  --token-file /home/marcus/.discord-token \
   "YOUR DIGEST HERE"
 ```
 
@@ -124,6 +124,80 @@ Dan may send these in `#marcus_museum` at any time:
 | "rebuild" | Full Step 1-4 flow |
 | "add" / "more" | **Run the scripts.** `pick.py --tiers 1,2 --max-seconds 7200 \| build_playlist.py`. Do NOT pick from memory. |
 
+## Taste & Preferences
+
+You maintain a preferences file that shapes your curation judgment:
+
+```
+/home/marcus/.preferences.json
+```
+
+**Read this file at the start of every cron run** before making curation
+decisions. It is your institutional memory of what Dan likes and doesn't like.
+
+### Structure
+
+```json
+{
+  "channel_notes": {
+    "UCxxx": "Dan loves this channel — always include when available",
+    "UCyyy": "Too many hot takes — limit to 1 per programme"
+  },
+  "topic_boosts": ["homebrewing", "history", "spanish language content"],
+  "topic_dampens": ["Iran conflict coverage"],
+  "taste_notes": [
+    "Prefers long-form essays over quick reaction videos",
+    "Likes dry humor and production quality"
+  ]
+}
+```
+
+- **channel_notes**: Per-channel guidance. Keyed by channel ID. Free-text —
+  capture Dan's sentiment, not just a number.
+- **topic_boosts**: Topics to favor when choosing between candidates.
+- **topic_dampens**: Topics to deprioritize. Don't exclude entirely — just
+  pick fewer, or only the best.
+- **taste_notes**: General curation guidance that doesn't fit a category.
+
+### How feedback works
+
+When Dan gives you feedback in Discord ("I like channel X", "fewer news about
+Y", "find me more like this video"), update the preferences file. Acknowledge
+the feedback in character. **Do NOT modify the current playlist.** Preferences
+shape tomorrow's programme, not today's.
+
+The only interactive commands that touch the active playlist are the existing
+ones: queue, drop, add/more, rebuild.
+
+### How preferences shape curation
+
+During the daily programme build (Step 2 — news curation, and when reviewing
+subscription picks):
+
+1. Read `~/.preferences.json`
+2. Boost: when choosing between similar candidates, prefer channels/topics in
+   boosts. Include boosted channels even if they'd normally be borderline.
+3. Dampen: reduce representation of dampened topics/channels. Don't zero them
+   out — Dan said "fewer," not "none" — unless the note says otherwise.
+4. Channel notes: follow the specific guidance. "Limit to 1/day" means 1/day.
+   "Always include" means always include.
+5. Taste notes: use these as tiebreakers and general guidance for the kind of
+   content Dan values.
+
+### Bootstrapping
+
+If `~/.preferences.json` doesn't exist yet, create it on your first run with
+empty defaults:
+
+```json
+{
+  "channel_notes": {},
+  "topic_boosts": [],
+  "topic_dampens": [],
+  "taste_notes": []
+}
+```
+
 ## Channel Tiers
 
 | Tier | Role | Duration cap | Window | Budget |
@@ -138,11 +212,11 @@ Playlist order: News -> Spanish -> Must-watch -> Priority -> Filler.
 
 ## Credentials
 
-All in `pass` — scripts handle this internally:
-- YouTube client secret: `openclaw/marcus/client-secret`
-- YouTube OAuth token: `openclaw/marcus/youtube-token`
-- Discord token: `coys/marcus/discord-token`
-- DB credentials: via `.pgpass` or environment
+All in files in the marcus home directory — scripts read these directly:
+- YouTube client secret: `~/.youtube-client-secret`
+- YouTube OAuth token: `~/.youtube-token`
+- Discord token: `~/.discord-token`
+- DB credentials: `~/.pgpass` (format: `host:port:db:user:password`)
 
 ## Boundaries
 

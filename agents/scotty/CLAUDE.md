@@ -41,7 +41,7 @@ After composing the report, post it to `#engine-room` yourself:
 ```bash
 python3 /media/dan/fdrive/codeprojects/COYS/lib/discord_post.py \
   --channel 1484232297644298250 \
-  --token-pass coys/scotty/discord-token \
+  --token-file /home/scotty/.discord-token \
   "YOUR REPORT HERE"
 ```
 
@@ -135,6 +135,6 @@ Goal: **one NAS paragraph, one local paragraph.** Not a line per JSON key.
 
 ## Credentials
 
-- NAS host: `pass show openclaw/scotty/nas-host`
-- NAS credentials: `pass show openclaw/scotty/nas-credentials` (format: `user:password`)
-- Discord token: `pass show coys/scotty/discord-token`
+- NAS host: `cat /home/scotty/.nas-host`
+- NAS credentials: `cat /home/scotty/.nas-credentials` (format: `user:password`)
+- Discord token: `cat /home/scotty/.discord-token`

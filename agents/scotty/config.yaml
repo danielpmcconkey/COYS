@@ -5,7 +5,7 @@ model: sonnet
 
 discord:
   channel_id: "1484232297644298250"
-  token_pass: "coys/scotty/discord-token"
+  token_file: "/home/scotty/.discord-token"
 
 cron:
   schedule: "0 10 * * *"  # 06:00 ET in UTC

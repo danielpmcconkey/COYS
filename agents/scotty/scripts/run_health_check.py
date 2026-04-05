@@ -32,12 +32,12 @@ DISK_MOUNTS = {
 
 MEDIA_MOUNT = "/mnt/media"
 
-NAS_PASS_ENTRY = "openclaw/scotty/nas-credentials"
-NAS_HOST_PASS_ENTRY = "openclaw/scotty/nas-host"
+NAS_CREDENTIALS_FILE = os.path.expanduser("~/.nas-credentials")
+NAS_HOST_FILE = os.path.expanduser("~/.nas-host")
 NAS_PORT = 5000
 REQUEST_TIMEOUT = 10
 
-MARCUS_TOKEN_PASS_ENTRY = "openclaw/marcus/youtube-token"
+MARCUS_TOKEN_FILE = "/home/marcus/.youtube-token"
 
 # Alert thresholds (percent)
 DISK_WARN = 80
@@ -49,16 +49,11 @@ DISK_CRITICAL = 95
 # Helpers
 # ---------------------------------------------------------------------------
 
-def get_pass(entry):
-    """Retrieve a value from the pass store."""
+def read_secret(filepath):
+    """Read a secret from a plain-text file."""
     try:
-        result = subprocess.run(
-            ["pass", "show", entry],
-            capture_output=True, text=True, timeout=10,
-        )
-        if result.returncode != 0:
-            return None
-        return result.stdout.strip()
+        with open(filepath) as f:
+            return f.read().strip()
     except Exception:
         return None
 
@@ -231,15 +226,13 @@ def nas_api_call(base_url, sid, api, method, version=1, extra_params=None):
 
 def check_nas():
     """Check Synology NAS health via REST API."""
-    # Resolve host from pass
-    nas_host = get_pass(NAS_HOST_PASS_ENTRY)
+    nas_host = read_secret(NAS_HOST_FILE)
     if not nas_host:
-        return {"error": "Could not retrieve NAS host from pass", "level": "red"}
+        return {"error": f"Could not read NAS host from {NAS_HOST_FILE}", "level": "red"}
 
-    # Resolve credentials from pass
-    creds_raw = get_pass(NAS_PASS_ENTRY)
+    creds_raw = read_secret(NAS_CREDENTIALS_FILE)
     if not creds_raw:
-        return {"error": "Could not retrieve NAS credentials from pass", "level": "red"}
+        return {"error": f"Could not read NAS credentials from {NAS_CREDENTIALS_FILE}", "level": "red"}
 
     parts = creds_raw.split(":", 1)
     if len(parts) != 2:
@@ -396,9 +389,9 @@ def check_marcus_youtube_token():
 
     Uses raw HTTP — no Google client libraries required.
     """
-    token_json_str = get_pass(MARCUS_TOKEN_PASS_ENTRY)
+    token_json_str = read_secret(MARCUS_TOKEN_FILE)
     if not token_json_str:
-        return {"valid": False, "error": "Could not retrieve token from pass", "level": "red"}
+        return {"valid": False, "error": f"Could not read token from {MARCUS_TOKEN_FILE}", "level": "red"}
 
     try:
         token_data = json.loads(token_json_str)

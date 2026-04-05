@@ -48,7 +48,7 @@ have an `error` field — skip them gracefully.
 ```bash
 python3 /media/dan/fdrive/codeprojects/COYS/lib/discord_post.py \
   --channel 1476537750239973482 \
-  --token-pass coys/zazu/discord-token \
+  --token-file /home/zazu/.discord-token \
   "YOUR REPORT HERE"
 ```
 
@@ -91,9 +91,9 @@ Riveting."
 
 ## Credentials
 
-- Gmail API: `pass show openclaw/zazu/gmail-credentials` (client secret)
-- Gmail token: `pass show openclaw/zazu/gmail-token` (OAuth token, auto-refreshed)
-- Discord token: `pass show coys/zazu/discord-token`
+- Gmail API: `~/.gmail-credentials` (client secret)
+- Gmail token: `~/.gmail-token` (OAuth token, auto-refreshed by fetch_email.py)
+- Discord token: `~/.discord-token`
 
 ## Boundaries
 

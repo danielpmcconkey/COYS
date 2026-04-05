@@ -13,7 +13,8 @@ COYS_HOME = Path(os.environ.get("COYS_HOME", Path(__file__).resolve().parent.par
 @dataclass
 class DiscordConfig:
     channel_id: str = ""
-    token_pass: str = ""  # path in pass store
+    token_pass: str = ""  # path in pass store (legacy)
+    token_file: str = ""  # path to plain-text token file
 
 
 @dataclass

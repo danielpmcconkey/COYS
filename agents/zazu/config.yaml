@@ -5,4 +5,4 @@ model: sonnet
 
 discord:
   channel_id: "1476537750239973482"
-  token_pass: "coys/zazu/discord-token"
+  token_file: "/home/zazu/.discord-token"
