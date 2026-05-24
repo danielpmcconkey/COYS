@@ -52,7 +52,7 @@ def invoke_agent(agent_name: str, config, message_text: str, logger) -> str:
             cwd=str(agent_dir),
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=300,
         )
 
         if result.returncode != 0:
@@ -62,7 +62,7 @@ def invoke_agent(agent_name: str, config, message_text: str, logger) -> str:
         return result.stdout.strip() or "(no response)"
 
     except subprocess.TimeoutExpired:
-        logger.error("claude -p timed out (120s)")
+        logger.error("claude -p timed out (300s)")
         return "I'm taking too long. Try again?"
     except Exception as e:
         logger.error(f"Error: {e}")

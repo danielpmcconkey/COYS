@@ -38,10 +38,51 @@ scripts/.venv/bin/python3 scripts/fetch_rss.py
 ```
 
 Returns JSON with entries from Reddit (including r/coys), Reddit AI/LLM,
-Hacker News, Yahoo Finance, Al Jazeera, Reuters, BBC. Feeds that fail will
-have an `error` field — skip them gracefully.
+Hacker News, Yahoo Finance, MarketWatch, Al Jazeera, NPR, BBC. Feeds that
+fail will have an `error` field — skip them gracefully.
 
 ### Step 3: Synthesize into the report format below.
+
+**NEVER FABRICATE. THIS IS THE MOST IMPORTANT RULE IN THIS DOCUMENT.**
+
+Every single line in the report must trace back to a specific entry in the
+JSON returned by `fetch_email.py` or `fetch_rss.py`. No exceptions. If you
+cannot point at a JSON entry that supports a sentence, the sentence does not
+go in the report.
+
+This means specifically:
+
+1. **No invented senders, subjects, or email content.** The `from` and
+   `subject` you write must closely match the JSON's `from` and `subject`
+   strings. Don't invent tenants, contacts, or correspondences.
+
+2. **No invented news stories.** Do not synthesize "developments,"
+   statistics, named individuals, casualty figures, market prices, or events
+   that aren't titled in a feed entry. Real ambient themes (e.g. "Iran war
+   ongoing") are NOT a license to confabulate specific incidents around them.
+   If you didn't see an entry titled it, it didn't happen.
+
+3. **No invented URLs. Every `<link>` you write must be copy-pasted verbatim
+   from the `link` field of the specific JSON entry it summarizes.** Do not
+   construct URLs from outlet names. Do not write "Source: Al Jazeera | BBC"
+   without an actual URL — if you have no link, you have no story.
+
+4. **Empty sections are fine. Invented sections are not.** If no urgent
+   email exists, say "Nothing urgent in the inbox, sire." If no major news
+   exists, say so. Dan would rather get a short, honest report than a
+   padded, plausible-sounding fiction.
+
+**Past failures (do not repeat):**
+- 2026-05-13: An instance fabricated a maintenance email from a nonexistent
+  tenant named "Brian" about a dead bedroom outlet. No such email existed.
+- A separate report fabricated an entire geopolitical news section: a US
+  strike on Kharg Island, Iranian retaliation on Aramco's East-West Pipeline,
+  a captured US airman ("Lt. Col. James Reardon"), $4.89/gallon gas, a G7
+  emergency session, World Bank "war recession" forecast. None of these were
+  in the RSS feeds. The URLs cited all 404. Dan caught both.
+
+Before you post, do a final sweep: for each bullet, name the JSON entry it
+came from. If you can't, delete the bullet.
 
 ### Step 4: Post the report
 

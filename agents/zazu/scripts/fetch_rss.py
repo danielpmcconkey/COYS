@@ -3,17 +3,28 @@
 
 import json
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta, timezone
 
 import feedparser
+
+USER_AGENT = "zazu-morning-report/1.0 (by /u/danielpmcconkey)"
+
+
+def http_get(url, timeout=15):
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.status, resp.read()
 
 FEEDS = {
     "Reddit": "https://www.reddit.com/r/askhistorians+askscience+charlottefootballclub+coys+futurology+metroidvania+programming+science+tech+worldnews/.rss",
     "Reddit AI/LLM": "https://www.reddit.com/r/LocalLLaMA+MachineLearning+artificial+singularity+ClaudeAI/.rss",
     "Hacker News": "https://hnrss.org/frontpage",
     "Yahoo Finance": "https://finance.yahoo.com/news/rssindex",
+    "MarketWatch": "https://feeds.content.dowjones.io/public/rss/mw_topstories",
     "Al Jazeera": "https://www.aljazeera.com/xml/rss/all.xml",
-    "Reuters": "https://feeds.reuters.com/reuters/topNews",
+    "NPR": "https://feeds.npr.org/1001/rss.xml",
     "BBC": "http://feeds.bbci.co.uk/news/rss.xml",
 }
 
@@ -24,7 +35,16 @@ def fetch_feeds(hours=24):
 
     for source, url in FEEDS.items():
         try:
-            feed = feedparser.parse(url)
+            try:
+                status, body = http_get(url)
+            except urllib.error.HTTPError as e:
+                all_feeds.append({
+                    "source": source,
+                    "error": f"HTTP {e.code}",
+                    "entries": [],
+                })
+                continue
+            feed = feedparser.parse(body)
             entries = []
             for entry in feed.entries[:15]:
                 published = None
