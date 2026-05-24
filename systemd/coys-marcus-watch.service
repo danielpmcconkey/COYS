@@ -1,0 +1,15 @@
+[Unit]
+Description=COYS Marcus watch-sync — Shield playback → DB completion poller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=marcus
+WorkingDirectory=/media/dan/fdrive/codeprojects/COYS/agents/marcus/scripts
+ExecStart=/media/dan/fdrive/codeprojects/COYS/agents/marcus/scripts/.venv/bin/python3 /media/dan/fdrive/codeprojects/COYS/agents/marcus/scripts/watch_sync.py
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
