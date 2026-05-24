@@ -389,9 +389,15 @@ def check_marcus_youtube_token():
 
     Uses raw HTTP — no Google client libraries required.
     """
-    token_json_str = read_secret(MARCUS_TOKEN_FILE)
-    if not token_json_str:
-        return {"valid": False, "error": f"Could not read token from {MARCUS_TOKEN_FILE}", "level": "red"}
+    if not os.path.exists(MARCUS_TOKEN_FILE):
+        return {"valid": False, "error": f"Token file not found at {MARCUS_TOKEN_FILE}", "level": "red"}
+    try:
+        with open(MARCUS_TOKEN_FILE) as f:
+            token_json_str = f.read().strip()
+    except PermissionError:
+        return {"valid": False, "error": f"Permission denied reading {MARCUS_TOKEN_FILE} (scotty user needs ACL)", "level": "red"}
+    except Exception as e:
+        return {"valid": False, "error": f"Read error on {MARCUS_TOKEN_FILE}: {e}", "level": "red"}
 
     try:
         token_data = json.loads(token_json_str)

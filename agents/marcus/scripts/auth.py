@@ -39,7 +39,7 @@ def _write_secret(filepath, content):
     """Write content to a secret file (mode 600)."""
     with open(filepath, "w") as f:
         f.write(content)
-    os.chmod(filepath, 0o600)
+    os.chmod(filepath, 0o640)
 
 
 def _load_credentials():
