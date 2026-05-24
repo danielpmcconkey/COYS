@@ -1,0 +1,10 @@
+name: Neil
+emoji: "🔭"
+mode: interactive
+model: sonnet
+
+discord:
+  channel_id: "TBD"
+  token_pass: "coys/neil/discord-token"
+
+extra_dirs: []

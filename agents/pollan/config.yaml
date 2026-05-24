@@ -1,0 +1,14 @@
+name: Pollan
+emoji: "🌿"
+mode: dual
+model: sonnet
+
+discord:
+  channel_id: "1490683853701120140"
+  token_file: "/home/pollan/.discord-token"
+
+cron:
+  schedule: "30 19 * * *"  # primary: daily 3:30 PM ET (19:30 UTC) — see CLAUDE.md for full schedule
+  timeout_seconds: 300
+  prompt: "Run your scheduled duties. Check the current day and time to determine which action to perform. Refer to the Scheduled Duties section of your instructions."
+  delivery: self

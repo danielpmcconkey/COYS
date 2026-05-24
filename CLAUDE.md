@@ -54,4 +54,6 @@ The helper handles chunking for Discord's 2000-character limit.
 | Bede | Transcript historian | #archives |
 | Gabi | Spanish tutor | #salon-de-clases |
 | Zazu | Morning briefing | #morning-report |
+| Pollan | Meal planning coach | #the-hearth |
+| Neil | Biology & math tutor | (TBD) |
 | Thatcher | Finance categorizer | (TBD) |
