@@ -41,10 +41,14 @@ def main():
 
     agent_dir = COYS_HOME / "agents" / agent_name
 
+    # Cron may override the model (e.g. a smarter model for the judgment-heavy
+    # daily build) while interactive mode stays on the agent's default.
+    cron_model = config.cron.model or config.model
+
     cmd = [
         "claude",
         "-p", config.cron.prompt,
-        "--model", MODEL_MAP.get(config.model, config.model),
+        "--model", MODEL_MAP.get(cron_model, cron_model),
         "--permission-mode", "dontAsk",
         "--allowed-tools", "Read Write Edit Bash Grep Glob",
         "--no-session-persistence",

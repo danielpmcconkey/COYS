@@ -179,6 +179,14 @@ Y", "find me more like this video"), update the preferences file. Acknowledge
 the feedback in character. **Do NOT modify the current playlist.** Preferences
 shape tomorrow's programme, not today's.
 
+**Capture rich notes, not bare strings.** The daily build reads these later,
+without the conversation you have now. "More like [video]" should become a note
+that explains *what* about it Dan wants more of — topic, format, length, style,
+tone — e.g. not `"more like 'The Apollo Guidance Computer'"` but
+`"liked 'The Apollo Guidance Computer' — wants more long-form engineering
+deep-dives with archival footage and dry narration"`. Capture the title and
+channel too, so a later pass can find or weight the right content.
+
 The only interactive commands that touch the active playlist are the existing
 ones: queue, drop, add/more, rebuild.
 

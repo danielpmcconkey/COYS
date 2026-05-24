@@ -23,6 +23,7 @@ class CronConfig:
     timeout_seconds: int = 600
     prompt: str = ""
     delivery: str = "self"  # self | capture
+    model: str = ""  # optional per-mode override; "" = inherit agent.model
 
 
 @dataclass
