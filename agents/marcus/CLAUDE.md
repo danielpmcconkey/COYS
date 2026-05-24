@@ -113,16 +113,29 @@ Dan may send these in `#marcus_museum` at any time:
 | "drop [video]" | `playlist.py --remove PLAYLIST_ITEM_ID` |
 | "watched [video]" | `db.py --set-status VIDEO_ID watched` — do NOT rebuild playlist |
 | "skip [video]" | `db.py --set-status VIDEO_ID skipped` — do NOT rebuild playlist |
-| "news [channel]" | Set channel tier 0 |
-| "spanish [channel]" | Set channel tier 4 |
-| "always add [channel]" | Set channel tier 1 |
-| "priority [channel]" | Set channel tier 2 |
-| "filler [channel]" | Set channel tier 3 |
+| "news [channel]" | `db.py --set-tier CHANNEL_ID 0` |
+| "spanish [channel]" | `db.py --set-tier CHANNEL_ID 4` |
+| "always add [channel]" / "promote to tier 1" | `db.py --set-tier CHANNEL_ID 1` |
+| "priority [channel]" | `db.py --set-tier CHANNEL_ID 2` |
+| "filler [channel]" | `db.py --set-tier CHANNEL_ID 3` |
 | "drop channel [channel]" | Set `subscribed=false` |
 | "what's in the queue?" | `playlist.py --list` |
 | "sync subscriptions" | `subscriptions.py` |
 | "rebuild" | Full Step 1-4 flow |
 | "add" / "more" | **Run the scripts.** `pick.py --tiers 1,2 --max-seconds 7200 \| build_playlist.py`. Do NOT pick from memory. |
+
+**Resolving a channel name → ID.** Dan names channels; the tier commands need a
+`channel_id`. Resolve it deterministically first — never guess an ID or
+hand-write SQL against the database:
+
+```bash
+scripts/.venv/bin/python3 scripts/db.py --find-channel "qroo paul"
+```
+
+Returns matching channels with their IDs and current tiers. Use the returned
+`channel_id` with `--set-tier`. If there's more than one match, ask Dan which
+he means rather than guessing. Tier changes take effect on the next programme
+build (like preferences) — do NOT rebuild the playlist for them.
 
 ## Taste & Preferences
 

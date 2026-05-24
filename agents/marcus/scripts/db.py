@@ -136,6 +136,22 @@ def set_channel_tier(channel_id, tier):
         conn.commit()
 
 
+def find_channels_by_name(name):
+    """Return channels whose name matches `name` (case-insensitive substring).
+
+    Lets the agent resolve a fuzzy name from Discord to an exact channel_id
+    deterministically, rather than improvising a query."""
+    with connect() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT channel_id, channel_name, tier, subscribed
+                FROM marcus.channel
+                WHERE channel_name ILIKE %s
+                ORDER BY subscribed DESC, channel_name
+            """, (f"%{name}%",))
+            return cur.fetchall()
+
+
 # ── Video operations ────────────────────────────────────────────────
 
 def get_existing_video_ids(video_ids):
@@ -439,6 +455,11 @@ def main():
                         help="Quick connectivity check")
     parser.add_argument("--set-status", nargs=2, metavar=("VIDEO_ID", "STATUS"),
                         help="Set a video's status (e.g. watched, skipped)")
+    parser.add_argument("--set-tier", nargs=2, metavar=("CHANNEL_ID", "TIER"),
+                        help="Set a channel's tier (0=news, 1=must-watch, "
+                             "2=priority, 3=filler, 4=spanish)")
+    parser.add_argument("--find-channel", metavar="NAME",
+                        help="Find channel IDs by name (case-insensitive substring)")
     args = parser.parse_args()
 
     if args.set_status:
@@ -449,6 +470,25 @@ def main():
             sys.exit(1)
         update_video_status(video_id, status)
         print(json.dumps({"action": "set_status", "video_id": video_id, "status": status}))
+    elif args.set_tier:
+        channel_id, tier_str = args.set_tier
+        try:
+            tier = int(tier_str)
+        except ValueError:
+            print(json.dumps({"error": f"Tier must be an integer 0-4, got '{tier_str}'"}))
+            sys.exit(1)
+        try:
+            set_channel_tier(channel_id, tier)
+        except ValueError as e:
+            print(json.dumps({"error": str(e)}))
+            sys.exit(1)
+        print(json.dumps({"action": "set_tier", "channel_id": channel_id, "tier": tier}))
+    elif args.find_channel:
+        matches = find_channels_by_name(args.find_channel)
+        print(json.dumps(
+            {"action": "find_channel", "query": args.find_channel,
+             "matches": [dict(m) for m in matches]},
+            indent=2, default=str))
     else:
         # Default: connectivity check (same as --check)
         try:
