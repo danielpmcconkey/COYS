@@ -1,0 +1,15 @@
+[Unit]
+Description=COYS Marcus interactive listener (dedicated, with conversation memory)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=marcus
+ExecStart=/media/dan/fdrive/codeprojects/COYS/agents/marcus/listen
+Restart=on-failure
+RestartSec=30
+Environment=COYS_HOME=/media/dan/fdrive/codeprojects/COYS
+
+[Install]
+WantedBy=multi-user.target

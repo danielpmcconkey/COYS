@@ -1,15 +1,8 @@
 name: Marcus
 emoji: "🏛️"
-mode: dual
-model: sonnet
+mode: interactive
+model: opus
 
 discord:
   channel_id: "1483924993145438420"
   token_file: "/home/marcus/.discord-token"
-
-cron:
-  schedule: "0 21 * * *"  # 17:00 ET in UTC
-  timeout_seconds: 900
-  model: opus  # smarter model for the judgment-heavy daily curation; interactive stays sonnet
-  prompt: "Read ~/.preferences.json FIRST and apply Dan's taste (topic boosts/dampens, channel notes, taste notes) throughout curation. Then build tonight's viewing programme: run run_daily.py, curate the news block applying that taste, build the playlist, and post the digest to #marcus_museum."
-  delivery: self

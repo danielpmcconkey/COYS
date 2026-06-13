@@ -35,13 +35,14 @@ connect = get_connection
 # ── Channel operations ──────────────────────────────────────────────
 
 def get_active_channels():
-    """Return all subscribed channels (tiers 0-3)."""
+    """Return all subscribed, non-blacklisted channels."""
     with connect() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
                 SELECT channel_id, channel_name, tier, category, last_upload_at
                 FROM marcus.channel
-                WHERE subscribed = TRUE AND tier IN (0, 1, 2, 3, 4)
+                WHERE subscribed = TRUE AND blacklisted = FALSE
+                  AND tier IN (0, 1, 2, 3, 4)
                 ORDER BY tier, channel_name
             """)
             return cur.fetchall()
@@ -54,7 +55,7 @@ def get_tier1_channels():
             cur.execute("""
                 SELECT channel_id, channel_name, last_upload_at
                 FROM marcus.channel
-                WHERE subscribed = TRUE AND tier = 1
+                WHERE subscribed = TRUE AND blacklisted = FALSE AND tier = 1
                 ORDER BY channel_name
             """)
             return cur.fetchall()
@@ -270,7 +271,7 @@ def get_spanish_picks(target_seconds=2700, min_seconds=1800):
                        c.tier, v.last_queued_at, v.times_queued
                 FROM marcus.video v
                 JOIN marcus.channel c ON v.channel_id = c.channel_id
-                WHERE c.tier = 4 AND c.subscribed = TRUE
+                WHERE c.tier = 4 AND c.subscribed = TRUE AND c.blacklisted = FALSE
                   AND v.published_at > now() - interval '90 days'
                   AND v.status NOT IN ('watched', 'skipped', 'expired')
                   AND COALESCE(v.duration_seconds, 0) >= 60
@@ -299,7 +300,7 @@ def get_news_candidates():
                        v.duration_seconds, v.thumbnail_url
                 FROM marcus.video v
                 JOIN marcus.channel c ON v.channel_id = c.channel_id
-                WHERE c.tier = 0 AND c.subscribed = TRUE
+                WHERE c.tier = 0 AND c.subscribed = TRUE AND c.blacklisted = FALSE
                   AND v.published_at > now() - interval '24 hours'
                   AND v.status NOT IN ('watched', 'skipped', 'expired')
                   AND COALESCE(v.duration_seconds, 0) <= 300
@@ -346,7 +347,7 @@ def get_subscription_picks(target_seconds=18000, min_seconds=10800, tiers=None):
                            c.tier, v.last_queued_at, v.times_queued
                     FROM marcus.video v
                     JOIN marcus.channel c ON v.channel_id = c.channel_id
-                    WHERE c.tier = %s AND c.subscribed = TRUE
+                    WHERE c.tier = %s AND c.subscribed = TRUE AND c.blacklisted = FALSE
                       AND v.published_at > now() - interval '90 days'
                       AND v.status NOT IN ('watched', 'skipped', 'expired')
                       AND COALESCE(v.duration_seconds, 0) >= 60
@@ -446,6 +447,270 @@ def save_playlist_config(playlist_id):
         conn.commit()
 
 
+# ── Conversation (session memory) ──────────────────────────────────
+
+def log_conversation(message_text, response_text=None):
+    """Insert a conversation row. Returns the new row id."""
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO marcus.conversation (message_text, response_text)
+                VALUES (%s, %s)
+                RETURNING id
+            """, (message_text, response_text))
+            row_id = cur.fetchone()[0]
+        conn.commit()
+    return row_id
+
+
+def update_conversation_response(conversation_id, response_text):
+    """Set the response_text on an existing conversation row."""
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE marcus.conversation
+                SET response_text = %s
+                WHERE id = %s
+            """, (response_text, conversation_id))
+        conn.commit()
+
+
+def get_session_conversation(window_start):
+    """Return conversation rows from window_start onward, ordered by time."""
+    with connect() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, message_text, response_text, created_at
+                FROM marcus.conversation
+                WHERE created_at >= %s
+                ORDER BY created_at
+            """, (window_start,))
+            return cur.fetchall()
+
+
+def search_conversation(query, limit=20):
+    """Search conversation history by text (case-insensitive substring)."""
+    with connect() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, message_text, response_text, created_at
+                FROM marcus.conversation
+                WHERE message_text ILIKE %s OR response_text ILIKE %s
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (f"%{query}%", f"%{query}%", limit))
+            return cur.fetchall()
+
+
+# ── Channel stats (taste signals) ─────────────────────────────────
+
+def upsert_channel_stats(channel_id, avg_completion, watch_count, skip_count,
+                         quality_score):
+    """Insert or update computed taste signals for a channel."""
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO marcus.channel_stats
+                    (channel_id, avg_completion, watch_count, skip_count,
+                     quality_score, last_computed)
+                VALUES (%s, %s, %s, %s, %s, now())
+                ON CONFLICT (channel_id) DO UPDATE SET
+                    avg_completion = EXCLUDED.avg_completion,
+                    watch_count = EXCLUDED.watch_count,
+                    skip_count = EXCLUDED.skip_count,
+                    quality_score = EXCLUDED.quality_score,
+                    last_computed = now()
+            """, (channel_id, avg_completion, watch_count, skip_count,
+                  quality_score))
+        conn.commit()
+
+
+def get_channel_stats():
+    """Return all channel stats rows."""
+    with connect() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT cs.channel_id, c.channel_name, cs.avg_completion,
+                       cs.watch_count, cs.skip_count, cs.quality_score,
+                       cs.last_computed
+                FROM marcus.channel_stats cs
+                JOIN marcus.channel c ON cs.channel_id = c.channel_id
+                ORDER BY cs.quality_score DESC NULLS LAST
+            """)
+            return cur.fetchall()
+
+
+def get_watch_data_for_stats():
+    """Return per-channel watch/skip counts and avg completion for stats computation."""
+    with connect() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT channel_id,
+                       count(*) FILTER (WHERE status = 'watched') AS watch_count,
+                       count(*) FILTER (WHERE status = 'skipped') AS skip_count,
+                       avg(completion_pct) FILTER (WHERE status = 'watched'
+                                                     AND completion_pct IS NOT NULL)
+                           AS avg_completion
+                FROM marcus.video
+                WHERE status IN ('watched', 'skipped')
+                GROUP BY channel_id
+            """)
+            return cur.fetchall()
+
+
+# ── Queue (playlist tracking) ─────────────────────────────────────
+
+def insert_queue(video_ids, session_date=None):
+    """Insert a batch of video IDs into the queue with sequential positions.
+    Returns count inserted."""
+    with connect() as conn:
+        with conn.cursor() as cur:
+            for pos, vid in enumerate(video_ids, 1):
+                cur.execute("""
+                    INSERT INTO marcus.queue (video_id, position, session_date)
+                    VALUES (%s, %s, COALESCE(%s, current_date))
+                """, (vid, pos, session_date))
+        conn.commit()
+    return len(video_ids)
+
+
+def get_current_queue(session_date=None):
+    """Return the queue for a session date (default today)."""
+    with connect() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT q.id, q.video_id, v.title, c.channel_name,
+                       v.duration_seconds, q.position, q.status, q.created_at
+                FROM marcus.queue q
+                JOIN marcus.video v ON q.video_id = v.video_id
+                JOIN marcus.channel c ON v.channel_id = c.channel_id
+                WHERE q.session_date = COALESCE(%s, current_date)
+                ORDER BY q.position
+            """, (session_date,))
+            return cur.fetchall()
+
+
+def update_queue_status(queue_id, status):
+    """Update the status of a queue entry."""
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE marcus.queue SET status = %s WHERE id = %s
+            """, (status, queue_id))
+        conn.commit()
+
+
+def get_recently_queued_video_ids(days=7):
+    """Return video IDs queued in the last N days, for deprioritization."""
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT video_id FROM marcus.queue
+                WHERE session_date >= current_date - %s
+            """, (days,))
+            return {row[0] for row in cur.fetchall()}
+
+
+# ── Blacklist ─────────────────────────────────────────────────────
+
+def blacklist_channel(channel_id, reason=None):
+    """Blacklist a channel. Does NOT delete — sets a flag."""
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE marcus.channel
+                SET blacklisted = TRUE, blacklist_reason = %s, updated_at = now()
+                WHERE channel_id = %s
+            """, (reason, channel_id))
+            count = cur.rowcount
+        conn.commit()
+    return count
+
+
+def get_blacklisted_channels():
+    """Return all blacklisted channels."""
+    with connect() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT channel_id, channel_name, blacklist_reason, updated_at
+                FROM marcus.channel
+                WHERE blacklisted = TRUE
+                ORDER BY updated_at DESC
+            """)
+            return cur.fetchall()
+
+
+def is_blacklisted(channel_id):
+    """Check if a channel is blacklisted."""
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT blacklisted FROM marcus.channel WHERE channel_id = %s
+            """, (channel_id,))
+            row = cur.fetchone()
+            return row[0] if row else False
+
+
+# ── Curation candidates ──────────────────────────────────────────
+
+def get_curation_candidates(max_duration=None, language=None,
+                            exclude_channels=None, max_age_days=90):
+    """Return candidate videos for model-driven curation.
+
+    Joins channel stats when available. Respects blacklist.
+    """
+    conditions = [
+        "c.subscribed = TRUE",
+        "c.blacklisted = FALSE",
+        "v.status NOT IN ('watched', 'skipped', 'expired')",
+        "COALESCE(v.duration_seconds, 0) >= 60",
+        f"v.published_at > now() - interval '{int(max_age_days)} days'",
+    ]
+    params = []
+
+    if max_duration:
+        conditions.append("v.duration_seconds <= %s")
+        params.append(max_duration)
+    if language == "spanish":
+        conditions.append("c.tier = 4")
+    if exclude_channels:
+        conditions.append("c.channel_id != ALL(%s)")
+        params.append(list(exclude_channels))
+
+    where = " AND ".join(conditions)
+
+    with connect() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(f"""
+                SELECT v.video_id, v.channel_id, c.channel_name, c.tier,
+                       c.category, v.title, v.description, v.published_at,
+                       v.duration_seconds, v.discovered,
+                       v.last_queued_at, v.times_queued,
+                       cs.avg_completion, cs.quality_score
+                FROM marcus.video v
+                JOIN marcus.channel c ON v.channel_id = c.channel_id
+                LEFT JOIN marcus.channel_stats cs ON c.channel_id = cs.channel_id
+                WHERE {where}
+                ORDER BY cs.quality_score DESC NULLS LAST,
+                         v.published_at DESC
+            """, params)
+            return cur.fetchall()
+
+
+# ── Video completion tracking ─────────────────────────────────────
+
+def set_video_watched(video_id, completion_pct=None):
+    """Mark a video watched and store its completion percentage."""
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE marcus.video
+                SET status = 'watched', completion_pct = %s
+                WHERE video_id = %s
+            """, (completion_pct, video_id))
+        conn.commit()
+
+
 # ── CLI ─────────────────────────────────────────────────────────────
 
 def main():
@@ -460,6 +725,10 @@ def main():
                              "2=priority, 3=filler, 4=spanish)")
     parser.add_argument("--find-channel", metavar="NAME",
                         help="Find channel IDs by name (case-insensitive substring)")
+    parser.add_argument("--blacklist-channel", nargs="+", metavar=("CHANNEL_ID", "REASON"),
+                        help="Blacklist a channel (ID, optional reason)")
+    parser.add_argument("--list-blacklist", action="store_true",
+                        help="List all blacklisted channels")
     args = parser.parse_args()
 
     if args.set_status:
@@ -483,6 +752,17 @@ def main():
             print(json.dumps({"error": str(e)}))
             sys.exit(1)
         print(json.dumps({"action": "set_tier", "channel_id": channel_id, "tier": tier}))
+    elif args.blacklist_channel:
+        channel_id = args.blacklist_channel[0]
+        reason = " ".join(args.blacklist_channel[1:]) if len(args.blacklist_channel) > 1 else None
+        count = blacklist_channel(channel_id, reason)
+        print(json.dumps({"action": "blacklist_channel", "channel_id": channel_id,
+                          "reason": reason, "rows_affected": count}))
+    elif args.list_blacklist:
+        channels = get_blacklisted_channels()
+        print(json.dumps({"action": "list_blacklist",
+                          "channels": [dict(c) for c in channels]},
+                         indent=2, default=str))
     elif args.find_channel:
         matches = find_channels_by_name(args.find_channel)
         print(json.dumps(

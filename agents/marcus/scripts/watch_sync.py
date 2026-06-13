@@ -40,7 +40,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import db  # noqa: E402  (Marcus's module — we use connect() + update_video_status())
 
 # ── Tunables (overridable via CLI) ──────────────────────────────────────
-SHIELD_ENDPOINT = "192.168.50.41:5555"
+SHIELDS = {
+    "downstairs": "192.168.50.41:5555",
+    "upstairs": "192.168.50.42:5555",
+}
 POLL_INTERVAL_S = 30
 WATCHED_THRESHOLD = 0.85
 ADB_TIMEOUT_S = 15
@@ -75,15 +78,14 @@ def _adb(*args, timeout=ADB_TIMEOUT_S):
     )
 
 
-def read_smarttube_session():
+def read_smarttube_session(endpoint):
     """Return dict(state=int, position_ms=int, title=str, channel=str) for the
     current SmartTube MediaSession, or None if nothing is playing / the Shield
     is unreachable."""
-    # Idempotent: "already connected" if up, re-establishes after Shield sleep.
-    _adb("connect", SHIELD_ENDPOINT)
+    _adb("connect", endpoint)
 
     try:
-        proc = _adb("-s", SHIELD_ENDPOINT, "shell", "dumpsys", "media_session")
+        proc = _adb("-s", endpoint, "shell", "dumpsys", "media_session")
     except subprocess.TimeoutExpired:
         return None
     if proc.returncode != 0 or not proc.stdout:
@@ -145,6 +147,8 @@ def fetch_queued():
                 FROM marcus.video v
                 JOIN marcus.channel c ON v.channel_id = c.channel_id
                 WHERE v.status = 'queued'
+                   OR (v.status = 'new'
+                       AND v.last_queued_at > now() - interval '7 days')
             """)
             return [
                 {"video_id": r[0], "title": r[1],
@@ -196,56 +200,67 @@ def is_complete(session, video):
 # ── Poll loop ───────────────────────────────────────────────────────────
 
 def poll_once(fired, dry_run=False):
-    """One detection cycle. `fired` is the in-session de-dupe set."""
-    session = read_smarttube_session()
-    if session is None:
-        return False  # idle or Shield unreachable
+    """One detection cycle across all Shields. `fired` is the in-session de-dupe set."""
+    hit = False
+    queued = None
+    for name, endpoint in SHIELDS.items():
+        session = read_smarttube_session(endpoint)
+        if session is None:
+            continue
 
-    queued = fetch_queued()
-    video = match_video(session, queued)
-    if video is None:
-        logger.debug("Playing %r (%s) — no queued match",
-                     session["title"], session["channel"])
-        return False
+        if queued is None:
+            queued = fetch_queued()
+        video = match_video(session, queued)
+        if video is None:
+            logger.debug("[%s] Playing %r (%s) — no queued match",
+                         name, session["title"], session["channel"])
+            continue
 
-    vid = video["video_id"]
-    if vid in fired:
-        return False
-    if not is_complete(session, video):
-        return False
+        vid = video["video_id"]
+        if vid in fired:
+            continue
+        if not is_complete(session, video):
+            continue
 
-    pct = (session["position_ms"] / 1000.0) / video["duration_seconds"]
-    logger.info("WATCHED %s — %r (%.0f%% of %ss, state=%d)%s",
-                vid, video["title"], pct * 100, video["duration_seconds"],
-                session["state"], " [dry-run]" if dry_run else "")
-    if not dry_run:
-        db.update_video_status(vid, "watched")
-    fired.add(vid)
-    return True
+        pct = (session["position_ms"] / 1000.0) / video["duration_seconds"]
+        logger.info("WATCHED %s — %r on %s (%.0f%% of %ss, state=%d)%s",
+                    vid, video["title"], name, pct * 100, video["duration_seconds"],
+                    session["state"], " [dry-run]" if dry_run else "")
+        if not dry_run:
+            db.set_video_watched(vid, completion_pct=pct)
+        fired.add(vid)
+        hit = True
+    return hit
 
 
 def run_forever(interval, dry_run=False):
-    logger.info("marcus-watch starting — shield=%s interval=%ds threshold=%.0f%%",
-                SHIELD_ENDPOINT, interval, WATCHED_THRESHOLD * 100)
+    shield_list = ", ".join(f"{n}={e}" for n, e in SHIELDS.items())
+    logger.info("marcus-watch starting — shields=[%s] interval=%ds threshold=%.0f%%",
+                shield_list, interval, WATCHED_THRESHOLD * 100)
     fired = set()
-    available = None  # track availability to log transitions, not every cycle
+    available = {}
     while True:
         try:
-            session = read_smarttube_session()
-            now_available = session is not None
-            if now_available != available:
-                logger.info("Shield %s", "available" if now_available else "idle/unreachable")
-                available = now_available
-            if session is not None:
-                queued = fetch_queued()
+            queued = None
+            for name, endpoint in SHIELDS.items():
+                session = read_smarttube_session(endpoint)
+                now_available = session is not None
+                if now_available != available.get(name):
+                    logger.info("Shield %s %s", name,
+                                "available" if now_available else "idle/unreachable")
+                    available[name] = now_available
+                if session is None:
+                    continue
+                if queued is None:
+                    queued = fetch_queued()
                 video = match_video(session, queued)
                 if video and video["video_id"] not in fired and is_complete(session, video):
                     pct = (session["position_ms"] / 1000.0) / video["duration_seconds"]
-                    logger.info("WATCHED %s — %r (%.0f%%)%s",
-                                video["video_id"], video["title"], pct * 100,
+                    logger.info("WATCHED %s — %r on %s (%.0f%%)%s",
+                                video["video_id"], video["title"], name, pct * 100,
                                 " [dry-run]" if dry_run else "")
                     if not dry_run:
-                        db.update_video_status(video["video_id"], "watched")
+                        db.set_video_watched(video["video_id"], completion_pct=pct)
                     fired.add(video["video_id"])
         except Exception:
             logger.exception("poll cycle failed — continuing")
@@ -273,19 +288,21 @@ def main():
     )
 
     if args.probe:
-        session = read_smarttube_session()
-        if session is None:
-            print("No SmartTube session (idle or Shield unreachable).")
-        else:
-            print(f"state={session['state']} position_ms={session['position_ms']}")
-            print(f"title={session['title']!r}")
-            print(f"channel={session['channel']!r}")
-            queued = fetch_queued()
-            match = match_video(session, queued)
-            print(f"match={match['video_id'] if match else None}"
-                  f" ({len(queued)} queued)")
-            if match:
-                print(f"complete={is_complete(session, match)}")
+        for name, endpoint in SHIELDS.items():
+            print(f"--- {name} ({endpoint}) ---")
+            session = read_smarttube_session(endpoint)
+            if session is None:
+                print("No SmartTube session (idle or Shield unreachable).")
+            else:
+                print(f"state={session['state']} position_ms={session['position_ms']}")
+                print(f"title={session['title']!r}")
+                print(f"channel={session['channel']!r}")
+                queued = fetch_queued()
+                match = match_video(session, queued)
+                print(f"match={match['video_id'] if match else None}"
+                      f" ({len(queued)} queued)")
+                if match:
+                    print(f"complete={is_complete(session, match)}")
         return
 
     if args.once:

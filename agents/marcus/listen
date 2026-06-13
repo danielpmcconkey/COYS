@@ -1,42 +1,83 @@
 #!/media/dan/fdrive/codeprojects/COYS/.venv/bin/python3
-"""COYS interactive agent listener.
+"""Marcus-specific Discord listener with conversation memory.
 
-Usage: listen <agent-name>
+Forked from bin/listen. Adds DB-backed session context (2PM-2AM ET window)
+so Marcus remembers what Dan said earlier in the evening. Each message still
+spawns a fresh claude -p — session continuity comes from the conversation
+log prefix, not from a long-running Claude process.
 
-Connects to Discord with the agent's bot token, listens for messages in the
-configured channel, and routes them through claude -p. Runs as a long-lived
-systemd service.
+Decoupled from the shared listener so restarts don't cascade to other agents.
 """
 
 import asyncio
 import subprocess
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-COYS_HOME = Path(__file__).resolve().parent.parent
+COYS_HOME = Path(__file__).resolve().parent.parent.parent
+AGENT_NAME = "marcus"
+AGENT_DIR = COYS_HOME / "agents" / AGENT_NAME
+SCRIPTS_DIR = AGENT_DIR / "scripts"
+
 sys.path.insert(0, str(COYS_HOME))
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib.config import load_config
 from lib.discord_post import get_token
 from lib import log
+import db as marcus_db
 
 import discord
 
-MODEL_MAP = {
-    "sonnet": "sonnet",
-    "opus": "opus",
-    "haiku": "haiku",
-}
+ET = ZoneInfo("America/New_York")
+MODEL = "claude-opus-4-6"
 
 
-def invoke_agent(agent_name: str, config, message_text: str, logger) -> str:
-    """Run claude -p with the user's message and return the response."""
-    agent_dir = COYS_HOME / "agents" / agent_name
+def get_session_window_start():
+    """Return the start of the current 2PM-2AM ET session window."""
+    now = datetime.now(ET)
+    today_2pm = now.replace(hour=14, minute=0, second=0, microsecond=0)
+    if now >= today_2pm:
+        return today_2pm
+    return today_2pm - timedelta(days=1)
+
+
+def build_context_prefix(logger):
+    """Load this session's conversation history and format as a prefix."""
+    window_start = get_session_window_start()
+    rows = marcus_db.get_session_conversation(window_start)
+    if not rows:
+        return ""
+
+    lines = ["=== Earlier today ==="]
+    for row in rows:
+        ts = row["created_at"].astimezone(ET).strftime("%H:%M")
+        lines.append(f"[{ts}] Dan: {row['message_text']}")
+        if row["response_text"]:
+            resp = row["response_text"]
+            if len(resp) > 300:
+                resp = resp[:300] + "..."
+            lines.append(f"[{ts}] Marcus: {resp}")
+    lines.append("=== Current message ===")
+    return "\n".join(lines)
+
+
+def invoke_agent(config, message_text: str, logger) -> str:
+    """Log the message, build context, run claude -p, log the response."""
+    conv_id = marcus_db.log_conversation(message_text)
+
+    prefix = build_context_prefix(logger)
+    if prefix:
+        prompt = f"{prefix}\nDan says: {message_text}"
+    else:
+        prompt = f"Dan says: {message_text}"
 
     cmd = [
         "claude",
-        "-p", f"Dan says: {message_text}",
-        "--model", MODEL_MAP.get(config.model, config.model),
+        "-p", prompt,
+        "--model", MODEL,
         "--permission-mode", "dontAsk",
         "--allowed-tools", "Read Write Edit Bash Grep Glob",
         "--no-session-persistence",
@@ -49,7 +90,7 @@ def invoke_agent(agent_name: str, config, message_text: str, logger) -> str:
     try:
         result = subprocess.run(
             cmd,
-            cwd=str(agent_dir),
+            cwd=str(AGENT_DIR),
             capture_output=True,
             text=True,
             timeout=300,
@@ -57,26 +98,24 @@ def invoke_agent(agent_name: str, config, message_text: str, logger) -> str:
 
         if result.returncode != 0:
             logger.error(f"claude -p failed: {result.stderr[:500]}")
-            return "Something went wrong. Check the logs."
-
-        return result.stdout.strip() or "(no response)"
+            response = "Something went wrong. Check the logs."
+        else:
+            response = result.stdout.strip() or "(no response)"
 
     except subprocess.TimeoutExpired:
         logger.error("claude -p timed out (300s)")
-        return "I'm taking too long. Try again?"
+        response = "I'm taking too long. Try again?"
     except Exception as e:
         logger.error(f"Error: {e}")
-        return f"Error: {e}"
+        response = f"Error: {e}"
+
+    marcus_db.update_conversation_response(conv_id, response)
+    return response
 
 
 def main():
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <agent-name>", file=sys.stderr)
-        sys.exit(1)
-
-    agent_name = sys.argv[1]
-    config = load_config(agent_name)
-    logger = log.setup(agent_name)
+    config = load_config(AGENT_NAME)
+    logger = log.setup(AGENT_NAME)
 
     token = get_token(config.discord.token_pass, config.discord.token_file)
 
@@ -86,14 +125,13 @@ def main():
 
     @client.event
     async def on_ready():
-        logger.info(f"Connected as {client.user} ({agent_name})")
+        logger.info(f"Connected as {client.user} (marcus — dedicated listener)")
 
     @client.event
     async def on_message(message):
         if message.author == client.user:
             return
 
-        # Respond in configured channel (mention required) or DMs
         is_dm = isinstance(message.channel, discord.DMChannel)
         is_channel = str(message.channel.id) == config.discord.channel_id
         is_mentioned = client.user.mentioned_in(message)
@@ -117,10 +155,9 @@ def main():
         async with message.channel.typing():
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
-                None, invoke_agent, agent_name, config, full_text, logger
+                None, invoke_agent, config, full_text, logger
             )
 
-        # Send response, chunking if needed
         while response:
             if len(response) <= 2000:
                 await message.channel.send(response)
@@ -131,7 +168,7 @@ def main():
             await message.channel.send(response[:split])
             response = response[split:].lstrip("\n")
 
-    logger.info(f"Starting listener for {agent_name}")
+    logger.info("Starting Marcus dedicated listener")
     client.run(token, log_handler=None)
 
 
