@@ -49,6 +49,7 @@ scripts/.venv/bin/python3 scripts/SCRIPT_NAME.py
 
 | Script | Purpose |
 |--------|---------|
+| `check_watched.py` | Read SmartTube caches from Shields, mark watched |
 | `refresh_catalog.py` | Sync RSS, enrich metadata, expire old videos |
 | `curate.py` | Fetch curation candidates with taste signals |
 | `build_playlist.py` | Clear + rebuild "Marcus Queue" playlist |
@@ -66,7 +67,17 @@ scripts/.venv/bin/python3 scripts/SCRIPT_NAME.py
 
 When Dan asks for a queue, follow this flow:
 
-### 1. Refresh the catalog (first request of session only)
+### 1. Reconcile watched videos
+
+```bash
+scripts/.venv/bin/python3 scripts/check_watched.py
+```
+
+Reads SmartTube's backup cache from both Shields (no root needed) and marks
+any completed videos (>=85% playback) as `watched` in the DB. Always run this
+first — it ensures you won't re-queue videos Dan already watched.
+
+### 2. Refresh the catalog (first request of session only)
 
 ```bash
 scripts/.venv/bin/python3 scripts/refresh_catalog.py
@@ -75,13 +86,13 @@ scripts/.venv/bin/python3 scripts/refresh_catalog.py
 Skip this if you've already refreshed this session (check your conversation
 context). Returns JSON with counts of new videos, channels checked, etc.
 
-### 2. Update taste scores
+### 3. Update taste scores
 
 ```bash
 scripts/.venv/bin/python3 scripts/taste.py
 ```
 
-### 3. Get curation candidates
+### 4. Get curation candidates
 
 ```bash
 scripts/.venv/bin/python3 scripts/curate.py [--max-duration N] [--language spanish]
@@ -90,7 +101,7 @@ scripts/.venv/bin/python3 scripts/curate.py [--max-duration N] [--language spani
 Returns JSON with candidates including channel name, tier, quality score,
 duration, discovery status, and recency data.
 
-### 4. Select videos (YOUR judgment)
+### 5. Select videos (YOUR judgment)
 
 From the candidates, pick videos that match Dan's request. Apply:
 
@@ -109,13 +120,13 @@ From the candidates, pick videos that match Dan's request. Apply:
 - **Deprioritize recently queued.** Videos queued in the last 7 days should
   be deprioritized unless Dan asks for them.
 
-### 5. Build the playlist
+### 6. Build the playlist
 
 ```bash
 echo '{"video_ids": ["ID1", "ID2", ...]}' | scripts/.venv/bin/python3 scripts/build_playlist.py
 ```
 
-### 6. Push to the Shield
+### 7. Push to the Shield
 
 Two Shields: **downstairs** (default) and **upstairs**. If Dan says where
 he's watching, pass `--shield`. If he doesn't say, ask.
@@ -125,7 +136,7 @@ scripts/.venv/bin/python3 scripts/queue_push.py --shield downstairs ID1 ID2 ...
 scripts/.venv/bin/python3 scripts/queue_push.py --shield upstairs ID1 ID2 ...
 ```
 
-### 7. Respond in Discord
+### 8. Respond in Discord
 
 Tell Dan what you built: video count, total duration, any discovery picks
 with commentary. Keep it concise but characterful.

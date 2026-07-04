@@ -654,10 +654,13 @@ def is_blacklisted(channel_id):
 # ── Curation candidates ──────────────────────────────────────────
 
 def get_curation_candidates(max_duration=None, language=None,
-                            exclude_channels=None, max_age_days=90):
+                            exclude_channels=None, max_age_days=90,
+                            max_times_queued=5):
     """Return candidate videos for model-driven curation.
 
     Joins channel stats when available. Respects blacklist.
+    Videos queued max_times_queued or more times without being watched are
+    excluded — they were either watched without detection or unwanted.
     """
     conditions = [
         "c.subscribed = TRUE",
@@ -665,6 +668,7 @@ def get_curation_candidates(max_duration=None, language=None,
         "v.status NOT IN ('watched', 'skipped', 'expired')",
         "COALESCE(v.duration_seconds, 0) >= 60",
         f"v.published_at > now() - interval '{int(max_age_days)} days'",
+        f"v.times_queued < {int(max_times_queued)}",
     ]
     params = []
 
