@@ -140,10 +140,19 @@ def reconcile(shields=None, dry_run=False):
             if vid not in all_watched or e["pct"] > all_watched[vid]["pct"]:
                 all_watched[vid] = e
 
+    # A Shield we can't read is a blind spot, not a non-event — anything Dan
+    # watched there stays eligible and gets re-queued. Surface it at top level.
+    warnings = [
+        f"{name} Shield unreadable ({r['error']}) — watch data from it is "
+        f"MISSING; videos watched there will be re-queued."
+        for name, r in shield_results.items() if "error" in r
+    ]
+
     watched_ids = set(all_watched.keys())
     if not watched_ids:
         return {
             "shields": shield_results,
+            "warnings": warnings,
             "newly_marked": 0,
             "already_watched": 0,
             "videos": [],
@@ -182,6 +191,7 @@ def reconcile(shields=None, dry_run=False):
 
     return {
         "shields": shield_results,
+        "warnings": warnings,
         "newly_marked": len(newly_marked),
         "already_watched": already_watched,
         "videos": newly_marked,
@@ -194,15 +204,31 @@ def main():
                         help="Report without updating the database")
     parser.add_argument("--shield", choices=list(SHIELDS.keys()),
                         help="Check a single shield only")
+    parser.add_argument("--no-freetube", action="store_true",
+                        help="Skip FreeTube check on Steam Machine")
     args = parser.parse_args()
 
     shields = [args.shield] if args.shield else None
     result = reconcile(shields=shields, dry_run=args.dry_run)
 
+    if not args.no_freetube:
+        import check_freetube
+        ft_result = check_freetube.reconcile(dry_run=args.dry_run)
+        result["freetube"] = ft_result
+        result["newly_marked"] += ft_result["newly_marked"]
+        result["already_watched"] += ft_result["already_watched"]
+        result["videos"].extend(ft_result["videos"])
+        result["warnings"].extend(ft_result.get("warnings", []))
+
     if args.dry_run:
         result["dry_run"] = True
 
     print(json.dumps(result, indent=2, default=str))
+
+    # No Shield readable at all means we know nothing about what Dan watched.
+    # Building a queue on that basis just re-serves old videos.
+    if result["shields"] and all("error" in r for r in result["shields"].values()):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -49,7 +49,8 @@ scripts/.venv/bin/python3 scripts/SCRIPT_NAME.py
 
 | Script | Purpose |
 |--------|---------|
-| `check_watched.py` | Read SmartTube caches from Shields, mark watched |
+| `check_watched.py` | Read SmartTube caches from Shields + FreeTube history from Steam Machine, mark watched |
+| `check_freetube.py` | Read FreeTube history from Steam Machine over SSH, mark watched |
 | `refresh_catalog.py` | Sync RSS, enrich metadata, expire old videos |
 | `curate.py` | Fetch curation candidates with taste signals |
 | `build_playlist.py` | Clear + rebuild "Marcus Queue" playlist |
@@ -76,6 +77,11 @@ scripts/.venv/bin/python3 scripts/check_watched.py
 Reads SmartTube's backup cache from both Shields (no root needed) and marks
 any completed videos (>=85% playback) as `watched` in the DB. Always run this
 first — it ensures you won't re-queue videos Dan already watched.
+
+Check the `warnings` array in the output. A Shield that can't be read is a
+blind spot, not an empty result: anything Dan watched there is still marked
+unwatched and will come back round. Mention it to him rather than quietly
+building a queue on incomplete data.
 
 ### 2. Refresh the catalog (first request of session only)
 
@@ -126,6 +132,12 @@ From the candidates, pick videos that match Dan's request. Apply:
 echo '{"video_ids": ["ID1", "ID2", ...]}' | scripts/.venv/bin/python3 scripts/build_playlist.py
 ```
 
+**This step is not optional and must succeed before step 7.** `queue_push.py`
+sends the Shield a *link to the playlist* — it does not send the videos. If
+the playlist wasn't rebuilt, Dan watches whatever was in it last time while
+the DB records your new picks. Check the exit code and the returned
+`inserted` count. If this fails, stop and tell Dan — do not push.
+
 ### 7. Push to the Shield
 
 Two Shields: **downstairs** (default) and **upstairs**. If Dan says where
@@ -135,6 +147,11 @@ he's watching, pass `--shield`. If he doesn't say, ask.
 scripts/.venv/bin/python3 scripts/queue_push.py --shield downstairs ID1 ID2 ...
 scripts/.venv/bin/python3 scripts/queue_push.py --shield upstairs ID1 ID2 ...
 ```
+
+Pass the same IDs you passed to `build_playlist.py`. The script verifies the
+live playlist matches them and refuses to push if it doesn't — that error
+means step 6 didn't take, so go back and fix it rather than re-running with
+`--skip-verify`.
 
 ### 8. Respond in Discord
 
