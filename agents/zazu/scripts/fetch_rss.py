@@ -17,16 +17,20 @@ def http_get(url, timeout=15):
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.status, resp.read()
 
+# Reddit allows one anonymous request per ~60s per IP, so all subreddits go in
+# a single multireddit request. top?t=day ranks by engagement, not recency.
 FEEDS = {
-    "Reddit": "https://www.reddit.com/r/askhistorians+askscience+charlottefootballclub+coys+futurology+metroidvania+programming+science+tech+worldnews/.rss",
-    "Reddit AI/LLM": "https://www.reddit.com/r/LocalLLaMA+MachineLearning+artificial+singularity+ClaudeAI/.rss",
+    "Reddit": "https://www.reddit.com/r/askhistorians+askscience+charlottefootballclub+coys+futurology+metroidvania+programming+science+tech+worldnews+LocalLLaMA+MachineLearning+artificial+singularity+ClaudeAI/top.rss?t=day&limit=100",
     "Hacker News": "https://hnrss.org/frontpage",
-    "Yahoo Finance": "https://finance.yahoo.com/news/rssindex",
     "MarketWatch": "https://feeds.content.dowjones.io/public/rss/mw_topstories",
     "Al Jazeera": "https://www.aljazeera.com/xml/rss/all.xml",
     "NPR": "https://feeds.npr.org/1001/rss.xml",
     "BBC": "http://feeds.bbci.co.uk/news/rss.xml",
 }
+
+# Entries kept per feed; the combined Reddit feed spans 15 subreddits.
+ENTRY_CAP = {"Reddit": 100}
+DEFAULT_ENTRY_CAP = 15
 
 
 def fetch_feeds(hours=24):
@@ -46,7 +50,7 @@ def fetch_feeds(hours=24):
                 continue
             feed = feedparser.parse(body)
             entries = []
-            for entry in feed.entries[:15]:
+            for entry in feed.entries[:ENTRY_CAP.get(source, DEFAULT_ENTRY_CAP)]:
                 published = None
                 for date_field in ("published_parsed", "updated_parsed"):
                     parsed = getattr(entry, date_field, None)
@@ -57,12 +61,19 @@ def fetch_feeds(hours=24):
                 if published and published < cutoff:
                     continue
 
-                entries.append({
+                item = {
                     "title": getattr(entry, "title", "(no title)"),
                     "link": getattr(entry, "link", ""),
                     "summary": getattr(entry, "summary", "")[:300],
                     "published": str(published) if published else "unknown",
-                })
+                }
+                comments = getattr(entry, "comments", None)
+                if comments:
+                    item["comments"] = comments
+                tags = getattr(entry, "tags", None)
+                if source == "Reddit" and tags:
+                    item["subreddit"] = tags[0].term
+                entries.append(item)
 
             all_feeds.append({
                 "source": source,

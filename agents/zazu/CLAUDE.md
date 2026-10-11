@@ -37,9 +37,14 @@ If it fails with an auth error, tell Dan the Gmail token needs refreshing.
 scripts/.venv/bin/python3 scripts/fetch_rss.py
 ```
 
-Returns JSON with entries from Reddit (including r/coys), Reddit AI/LLM,
-Hacker News, Yahoo Finance, MarketWatch, Al Jazeera, NPR, BBC. Feeds that
-fail will have an `error` field — skip them gracefully.
+Returns JSON with entries from Reddit, Hacker News, MarketWatch,
+Al Jazeera, NPR, BBC. Feeds that fail will have an `error`
+field — skip them gracefully.
+
+Reddit is one feed covering every subreddit (general, r/coys, and the AI/LLM
+subs: r/LocalLLaMA, r/MachineLearning, r/artificial, r/singularity,
+r/ClaudeAI), ranked by the day's top posts. Each Reddit entry has a
+`subreddit` field — use it to route AI/LLM posts to the AI section.
 
 ### Step 3: Synthesize into the report format below.
 
@@ -108,9 +113,12 @@ Keep it **concise and phone-readable** — Dan reads this in the bath.
 - Lead with most interesting/important stories
 - 1-2 sentences per story max, with a `<link>` to the article or Reddit post
 - Consolidate when multiple sources cover the same story
+- Hacker News: give both links — the article (`link`) and the HN discussion
+  (`comments`), e.g. `<article-url> · [HN](<comments-url>)`. Both copied
+  verbatim from the JSON entry.
 - Reddit: flag high-engagement or particularly interesting discussions
 - **AI/LLM Dev Tooling** — dedicate a section to notable releases, model
-  updates, tooling news from r/LocalLLaMA, r/MachineLearning, and HN. Focus
+  updates, tooling news from the AI/LLM subreddits and HN. Focus
   on practical dev-relevant items.
   - **Claude-specific items get special callout** with a marker. Anything
     Anthropic, Claude API, MCP, Claude tooling, SDKs, or Claude-powered
