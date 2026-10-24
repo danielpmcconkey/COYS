@@ -65,6 +65,16 @@ You are responsible for posting. Do it exactly once.
 - **nas.raids** — pool status and RAID type
 - **nas.update_available** — DSM update pending
 
+### Database Backup
+- **pg_backup** — the `sonofleo_prod` backup (Dan's books). A nightly dump
+  at 03:15 lands on the NAS; first-of-the-month dumps are kept forever and
+  copied, encrypted, to Google Drive on Sundays. `level` is red when
+  `problems` is non-empty: list every problem verbatim. Any problem here is
+  a red alert: these are the household's books.
+- All green: one phrase in the local paragraph, e.g. "books backed up last
+  night, off-site copy current."
+- Logs for Dan: `/media/dan/fdrive/codeprojects/COYS/logs/backup/`.
+
 ### Agent Tokens
 - **marcus_youtube_token** — whether Marcus's YouTube OAuth refresh token is
   still valid. If dead, Dan needs to re-auth before 17:00 ET:

@@ -1,13 +1,18 @@
 # COYS — Bot Army Cron
 SHELL=/bin/bash
-PATH=/usr/local/bin:/usr/bin:/bin
+PATH=/home/dan/.local/bin:/usr/local/bin:/usr/bin:/bin
 COYS_HOME=/media/dan/fdrive/codeprojects/COYS
 
 # Scotty — 06:00 ET (10:00 UTC)
-0 10 * * * dan $COYS_HOME/bin/run-agent scotty
+0 6 * * * scotty $COYS_HOME/bin/run-agent scotty
 
 # Marcus — 17:00 ET (21:00 UTC)
-0 21 * * * dan $COYS_HOME/bin/run-agent marcus
+# 0 17 * * * marcus $COYS_HOME/bin/run-agent marcus
 
 # Bede — 00:00, 02:00, 04:00 ET (04:00, 06:00, 08:00 UTC)
-0 4,6,8 * * * dan $COYS_HOME/bin/run-agent bede
+0 0,2,4 * * * bede $COYS_HOME/bin/run-agent bede
+
+# Postgres backup (sonofleo_prod): nightly dump 03:15, prune 03:45, off-site Sundays 04:30 ET
+15 3 * * * dan $COYS_HOME/backup/pg-backup-nightly.sh
+45 3 * * * dan $COYS_HOME/backup/pg-backup-prune.sh
+30 4 * * 0 dan $COYS_HOME/backup/pg-backup-offsite.sh

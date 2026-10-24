@@ -9,6 +9,7 @@ Each check is isolated in try/except. One failure doesn't kill the others.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -38,6 +39,12 @@ NAS_PORT = 5000
 REQUEST_TIMEOUT = 10
 
 MARCUS_TOKEN_FILE = "/home/marcus/.youtube-token"
+
+# Postgres backup (COYS/backup/): nightly dump, monthly keepers, weekly off-site
+BACKUP_DB = "sonofleo_prod"
+BACKUP_DIR = f"/mnt/media/Backups/postgres/{BACKUP_DB}"
+BACKUP_MAX_AGE_HOURS = 26
+OFFSITE_MAX_AGE_DAYS = 8
 
 # Alert thresholds (percent)
 DISK_WARN = 80
@@ -381,6 +388,75 @@ def check_nas():
 
 
 # ---------------------------------------------------------------------------
+# Backup checks
+# ---------------------------------------------------------------------------
+
+def check_pg_backup():
+    """Check the sonofleo_prod backup: last night's dump, this month's keeper, off-site copy."""
+    now = datetime.now()
+    try:
+        dumps = sorted(
+            f for f in os.listdir(BACKUP_DIR)
+            if re.fullmatch(rf"{BACKUP_DB}-\d{{4}}-\d{{2}}-\d{{2}}\.dump", f)
+        )
+    except Exception as e:
+        return {"error": f"Cannot read {BACKUP_DIR}: {e}", "level": "red"}
+    if not dumps:
+        return {"error": f"No dumps in {BACKUP_DIR}", "level": "red"}
+
+    problems = []
+    result = {"dir": BACKUP_DIR, "dump_count": len(dumps)}
+
+    # Last night's dump: fresh, non-empty, readable
+    newest = dumps[-1]
+    path = os.path.join(BACKUP_DIR, newest)
+    st = os.stat(path)
+    age_h = round((now.timestamp() - st.st_mtime) / 3600, 1)
+    readable = subprocess.run(
+        ["pg_restore", "--list", path], capture_output=True, timeout=60,
+    ).returncode == 0
+    result["newest"] = {"file": newest, "age_hours": age_h, "bytes": st.st_size, "readable": readable}
+    if age_h > BACKUP_MAX_AGE_HOURS:
+        problems.append(f"newest dump is {age_h}h old")
+    if st.st_size == 0 or not readable:
+        problems.append(f"{newest} is empty or unreadable")
+
+    # This month's first-of-month keeper, once the routine has been running on a 1st
+    monthly = f"{BACKUP_DB}-{now:%Y-%m}-01.dump"
+    expected = dumps[0] <= monthly
+    result["monthly"] = {"file": monthly, "expected": expected, "present": monthly in dumps}
+    if expected and monthly not in dumps:
+        problems.append(f"{monthly} is missing; this month has no permanent copy")
+
+    # Off-site: the weekly upload ran recently and has the latest keeper
+    keepers = [d for d in dumps if d.endswith("-01.dump")]
+    status_file = os.path.join(BACKUP_DIR, ".offsite-status.json")
+    try:
+        with open(status_file) as f:
+            status = json.load(f)
+        done = datetime.fromisoformat(status["completed_at"]).replace(tzinfo=None)
+        age_d = round((now - done).total_seconds() / 86400, 1)
+        result["offsite"] = {"age_days": age_d, "latest": status.get("latest", "")}
+        if age_d > OFFSITE_MAX_AGE_DAYS:
+            problems.append(f"off-site upload last succeeded {age_d} days ago")
+        # A new keeper waits for the next Sunday upload; only red once that's overdue
+        if keepers and status.get("latest") != keepers[-1]:
+            keeper_date = datetime.strptime(keepers[-1][len(BACKUP_DB) + 1:-5], "%Y-%m-%d")
+            if (now - keeper_date).days > OFFSITE_MAX_AGE_DAYS:
+                problems.append(f"{keepers[-1]} not yet verified in Drive")
+    except FileNotFoundError:
+        result["offsite"] = {"status": "never run"}
+        if keepers:
+            problems.append("off-site upload has never succeeded")
+    except Exception as e:
+        problems.append(f"off-site status unreadable: {e}")
+
+    result["problems"] = problems
+    result["level"] = "red" if problems else "green"
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Agent token checks
 # ---------------------------------------------------------------------------
 
@@ -455,6 +531,8 @@ def main():
 
     # NAS checks (isolated — NAS failure doesn't affect local results)
     report["nas"] = check_nas()
+
+    report["pg_backup"] = check_pg_backup()
 
     # Agent token checks
     report["marcus_youtube_token"] = check_marcus_youtube_token()
