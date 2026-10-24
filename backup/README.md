@@ -25,13 +25,14 @@ Installs rclone, creates the role and `.pgpass`, makes the NAS folders, moves
 the LeoBloom final dump to `/mnt/media/Backups/postgres/leobloom_prod/`, adds
 the cron lines, takes the first dump. Ends with a listing showing today's file.
 
-### 2. (Skipped) Own Google OAuth client
+### 2. Own Google OAuth client
 
-Not needed: rclone's built-in client is published and verified, so its login
-doesn't expire, and one small file a month is nowhere near its rate limits.
-Your own client needs a published app, which Google now gates behind a
-branding page with an external URL (2026-10-24). Only revisit if uploads
-start failing on rate limits.
+Done 2026-10-24: `gdrive:` uses Dan's own client, app "rclone-backup",
+published, branding pages on danielpmcconkey.github.io. Client ID and secret
+are in the Keeper record. rclone's shared client is being retired in 2026.
+Scope is `drive.file`, so a different client can't see files this one
+uploaded: don't swap clients, or everything already in Drive is orphaned
+from these scripts. (Recovery from the Drive web download is unaffected.)
 
 ### 3. Encryption passwords (Keeper, ~2 min)
 
