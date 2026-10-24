@@ -75,6 +75,12 @@ def main():
         if result.stderr:
             logger.warning(f"Stderr:\n{result.stderr[:2000]}")
 
+        # Auth failures go to stdout, so fall back to it for the alert
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout).strip().splitlines()
+            _alert(config, logger, f"claude -p exited {result.returncode}: {detail[0] if detail else 'no output'}")
+            return
+
         if config.cron.delivery == "capture" and result.stdout.strip():
             token = get_token(config.discord.token_pass, config.discord.token_file)
             post_message(config.discord.channel_id, token, result.stdout.strip())

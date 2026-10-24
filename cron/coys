@@ -9,8 +9,8 @@ COYS_HOME=/media/dan/fdrive/codeprojects/COYS
 # Marcus — 17:00 ET (21:00 UTC)
 # 0 17 * * * marcus $COYS_HOME/bin/run-agent marcus
 
-# Bede — 00:00, 02:00, 04:00 ET (04:00, 06:00, 08:00 UTC)
-0 0,2,4 * * * bede $COYS_HOME/bin/run-agent bede
+# Bede — retired 2026-10-24
+# 0 0,2,4 * * * bede $COYS_HOME/bin/run-agent bede
 
 # Postgres backup (sonofleo_prod): nightly dump 03:15, prune 03:45, off-site Sundays 04:30 ET
 15 3 * * * dan $COYS_HOME/backup/pg-backup-nightly.sh
