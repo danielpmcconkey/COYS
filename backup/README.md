@@ -5,10 +5,13 @@
 | 03:15 daily | `pg-backup-nightly.sh` | `pg_dump` to `/mnt/media/Backups/postgres/sonofleo_prod/sonofleo_prod-YYYY-MM-DD.dump`, checked with `pg_restore --list` before it takes its name |
 | 03:45 daily | `pg-backup-prune.sh` | Deletes dumps older than 14 days, never a `-01` one, never the newest 14. `DRY_RUN=1` to preview |
 | 04:30 Sundays | `pg-backup-offsite.sh` | `rclone copy` of the `-01` dumps to `gdrive-crypt:` (encrypted Drive), `cryptcheck`, writes `.offsite-status.json` |
-| 06:00 daily | Scotty | Newest dump < 26h and readable; this month's `-01` present; off-site < 8 days and has the latest `-01` |
+| 03:30 Sundays | `records-backup-weekly.sh` | `tar.gz` of `/mnt/media/BusinessRecords` to `/mnt/media/Backups/businessrecords/BusinessRecords-YYYY-MM-DD-HHMM.tar.gz`, checked with `tar -tzf`; prunes to 5 weeks (never the newest 5, never the first archive of a month); `rclone sync` to `gdrive-crypt:businessrecords`, so pruned archives leave Drive too (no trash); `cryptcheck`, writes `.offsite-status.json` |
+| 06:00 daily | Scotty | Newest dump < 26h and readable; this month's `-01` present; off-site < 8 days and has the latest `-01`. Newest records archive < 8 days, readable, and verified in Drive |
 
 Runs as `dan` (cron in `/etc/cron.d/coys`). Logs: `COYS/logs/backup/YYYY-MM-DD.log`.
 Role `sonofleo_backup` (read-only via `pg_read_all_data`), password in `~dan/.pgpass`.
+The records archives restore with the same Recovery steps below: they're under
+`businessrecords/` instead of `postgres/sonofleo_prod/`, then `tar -xzf`.
 
 ## One-time setup
 

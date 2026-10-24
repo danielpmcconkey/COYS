@@ -46,6 +46,10 @@ BACKUP_DIR = f"/mnt/media/Backups/postgres/{BACKUP_DB}"
 BACKUP_MAX_AGE_HOURS = 26
 OFFSITE_MAX_AGE_DAYS = 8
 
+# BusinessRecords backup (COYS/backup/records-backup-weekly.sh): weekly tar.gz, mirrored to Drive
+RECORDS_BACKUP_DIR = "/mnt/media/Backups/businessrecords"
+RECORDS_MAX_AGE_DAYS = 8
+
 # Alert thresholds (percent)
 DISK_WARN = 80
 DISK_RED = 90
@@ -456,6 +460,54 @@ def check_pg_backup():
     return result
 
 
+def check_records_backup():
+    """Check the BusinessRecords backup: this week's archive, readable, and verified in Drive."""
+    now = datetime.now()
+    try:
+        archives = sorted(
+            f for f in os.listdir(RECORDS_BACKUP_DIR)
+            if re.fullmatch(r"BusinessRecords-\d{4}-\d{2}-\d{2}-\d{4}\.tar\.gz", f)
+        )
+    except Exception as e:
+        return {"error": f"Cannot read {RECORDS_BACKUP_DIR}: {e}", "level": "red"}
+    if not archives:
+        return {"error": f"No archives in {RECORDS_BACKUP_DIR}", "level": "red"}
+
+    problems = []
+    result = {"dir": RECORDS_BACKUP_DIR, "archive_count": len(archives)}
+
+    # Newest archive: this week's, non-empty, readable
+    newest = archives[-1]
+    path = os.path.join(RECORDS_BACKUP_DIR, newest)
+    st = os.stat(path)
+    age_d = round((now.timestamp() - st.st_mtime) / 86400, 1)
+    readable = subprocess.run(
+        ["tar", "-tzf", path], capture_output=True, timeout=120,
+    ).returncode == 0
+    result["newest"] = {"file": newest, "age_days": age_d, "bytes": st.st_size, "readable": readable}
+    if age_d > RECORDS_MAX_AGE_DAYS:
+        problems.append(f"newest archive is {age_d} days old")
+    if st.st_size == 0 or not readable:
+        problems.append(f"{newest} is empty or unreadable")
+
+    # Off-site: the status file is only written after cryptcheck passes
+    try:
+        with open(os.path.join(RECORDS_BACKUP_DIR, ".offsite-status.json")) as f:
+            status = json.load(f)
+        result["offsite"] = {"completed_at": status["completed_at"], "latest": status.get("latest", "")}
+        if status.get("latest") != newest:
+            problems.append(f"{newest} not verified in Drive")
+    except FileNotFoundError:
+        result["offsite"] = {"status": "never run"}
+        problems.append("Drive upload has never succeeded")
+    except Exception as e:
+        problems.append(f"off-site status unreadable: {e}")
+
+    result["problems"] = problems
+    result["level"] = "red" if problems else "green"
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Agent token checks
 # ---------------------------------------------------------------------------
@@ -533,6 +585,7 @@ def main():
     report["nas"] = check_nas()
 
     report["pg_backup"] = check_pg_backup()
+    report["records_backup"] = check_records_backup()
 
     # Agent token checks
     report["marcus_youtube_token"] = check_marcus_youtube_token()

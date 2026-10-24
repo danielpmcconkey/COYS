@@ -16,3 +16,6 @@ COYS_HOME=/media/dan/fdrive/codeprojects/COYS
 15 3 * * * dan $COYS_HOME/backup/pg-backup-nightly.sh
 45 3 * * * dan $COYS_HOME/backup/pg-backup-prune.sh
 30 4 * * 0 dan $COYS_HOME/backup/pg-backup-offsite.sh
+
+# BusinessRecords: weekly tar.gz, 5 weeks + monthly keepers, here and in Drive, Sundays 03:30 ET
+30 3 * * 0 dan $COYS_HOME/backup/records-backup-weekly.sh

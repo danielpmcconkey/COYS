@@ -73,6 +73,10 @@ You are responsible for posting. Do it exactly once.
   a red alert: these are the household's books.
 - All green: one phrase in the local paragraph, e.g. "books backed up last
   night, off-site copy current."
+- **records_backup** — the weekly `BusinessRecords` archive (Dan's business
+  and estate documents), made Sundays 03:30 and mirrored, encrypted, to
+  Google Drive. Same rules: red when `problems` is non-empty, list them
+  verbatim. All green: fold it into the same phrase as the books.
 - Logs for Dan: `/media/dan/fdrive/codeprojects/COYS/logs/backup/`.
 
 ### Agent Tokens
