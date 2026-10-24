@@ -40,11 +40,10 @@ REQUEST_TIMEOUT = 10
 
 MARCUS_TOKEN_FILE = "/home/marcus/.youtube-token"
 
-# Postgres backup (COYS/backup/): nightly dump, monthly keepers, weekly off-site
+# Postgres backup (COYS/backup/): nightly dump, monthly keepers, nightly off-site
 BACKUP_DB = "sonofleo_prod"
 BACKUP_DIR = f"/mnt/media/Backups/postgres/{BACKUP_DB}"
 BACKUP_MAX_AGE_HOURS = 26
-OFFSITE_MAX_AGE_DAYS = 8
 
 # BusinessRecords backup (COYS/backup/records-backup-weekly.sh): weekly tar.gz, mirrored to Drive
 RECORDS_BACKUP_DIR = "/mnt/media/Backups/businessrecords"
@@ -432,26 +431,21 @@ def check_pg_backup():
     if expected and monthly not in dumps:
         problems.append(f"{monthly} is missing; this month has no permanent copy")
 
-    # Off-site: the weekly upload ran recently and has the latest keeper
-    keepers = [d for d in dumps if d.endswith("-01.dump")]
+    # Off-site: last night's upload ran and has the newest dump
     status_file = os.path.join(BACKUP_DIR, ".offsite-status.json")
     try:
         with open(status_file) as f:
             status = json.load(f)
         done = datetime.fromisoformat(status["completed_at"]).replace(tzinfo=None)
-        age_d = round((now - done).total_seconds() / 86400, 1)
-        result["offsite"] = {"age_days": age_d, "latest": status.get("latest", "")}
-        if age_d > OFFSITE_MAX_AGE_DAYS:
-            problems.append(f"off-site upload last succeeded {age_d} days ago")
-        # A new keeper waits for the next Sunday upload; only red once that's overdue
-        if keepers and status.get("latest") != keepers[-1]:
-            keeper_date = datetime.strptime(keepers[-1][len(BACKUP_DB) + 1:-5], "%Y-%m-%d")
-            if (now - keeper_date).days > OFFSITE_MAX_AGE_DAYS:
-                problems.append(f"{keepers[-1]} not yet verified in Drive")
+        age_h = round((now - done).total_seconds() / 3600, 1)
+        result["offsite"] = {"age_hours": age_h, "latest": status.get("latest", "")}
+        if age_h > BACKUP_MAX_AGE_HOURS:
+            problems.append(f"off-site upload last succeeded {age_h}h ago")
+        if status.get("latest") != newest:
+            problems.append(f"{newest} not verified in Drive")
     except FileNotFoundError:
         result["offsite"] = {"status": "never run"}
-        if keepers:
-            problems.append("off-site upload has never succeeded")
+        problems.append("off-site upload has never succeeded")
     except Exception as e:
         problems.append(f"off-site status unreadable: {e}")
 

@@ -67,8 +67,8 @@ You are responsible for posting. Do it exactly once.
 
 ### Database Backup
 - **pg_backup** — the `sonofleo_prod` backup (Dan's books). A nightly dump
-  at 03:15 lands on the NAS; first-of-the-month dumps are kept forever and
-  copied, encrypted, to Google Drive on Sundays. `level` is red when
+  at 03:15 lands on the NAS and is copied, encrypted, to Google Drive at
+  04:30; 14 days of dailies are kept, first-of-the-month dumps forever. `level` is red when
   `problems` is non-empty: list every problem verbatim. Any problem here is
   a red alert: these are the household's books.
 - All green: one phrase in the local paragraph, e.g. "books backed up last

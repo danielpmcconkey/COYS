@@ -4,9 +4,9 @@
 |---|---|---|
 | 03:15 daily | `pg-backup-nightly.sh` | `pg_dump` to `/mnt/media/Backups/postgres/sonofleo_prod/sonofleo_prod-YYYY-MM-DD.dump`, checked with `pg_restore --list` before it takes its name |
 | 03:45 daily | `pg-backup-prune.sh` | Deletes dumps older than 14 days, never a `-01` one, never the newest 14. `DRY_RUN=1` to preview |
-| 04:30 Sundays | `pg-backup-offsite.sh` | `rclone copy` of the `-01` dumps to `gdrive-crypt:` (encrypted Drive), `cryptcheck`, writes `.offsite-status.json` |
+| 04:30 daily | `pg-backup-offsite.sh` | Puts every dump on `gdrive-crypt:` (encrypted Drive), so Drive holds what the NAS does: 14 dailies plus every `-01`. `-01` dumps: copy only, never deleted or overwritten. Dailies: `rclone sync` (pruned ones leave Drive, no trash), `--immutable`, `--max-delete 2`. `cryptcheck`, writes `.offsite-status.json` |
 | 03:30 Sundays | `records-backup-weekly.sh` | `tar.gz` of `/mnt/media/BusinessRecords` to `/mnt/media/Backups/businessrecords/BusinessRecords-YYYY-MM-DD-HHMM.tar.gz`, checked with `tar -tzf`; prunes to 5 weeks (never the newest 5, never the first archive of a month); `rclone sync` to `gdrive-crypt:businessrecords`, so pruned archives leave Drive too (no trash); `cryptcheck`, writes `.offsite-status.json` |
-| 06:00 daily | Scotty | Newest dump < 26h and readable; this month's `-01` present; off-site < 8 days and has the latest `-01`. Newest records archive < 8 days, readable, and verified in Drive |
+| 06:00 daily | Scotty | Newest dump < 26h and readable; this month's `-01` present; off-site < 26h and has the newest dump. Newest records archive < 8 days, readable, and verified in Drive |
 
 Runs as `dan` (cron in `/etc/cron.d/coys`). Logs: `COYS/logs/backup/YYYY-MM-DD.log`.
 Role `sonofleo_backup` (read-only via `pg_read_all_data`), password in `~dan/.pgpass`.
@@ -61,7 +61,7 @@ Needs only a browser, this record's two encryption values, and any machine:
 2. Install rclone (<https://rclone.org/install/>) and PostgreSQL.
 3. `rclone config create local-crypt crypt remote ~/restore/Backups password '<Encryption password>' password2 '<Encryption salt>' --obscure`
 4. `rclone ls local-crypt:` shows the real names
-   (`postgres/sonofleo_prod/sonofleo_prod-YYYY-MM-01.dump`), then
+   (`postgres/sonofleo_prod/sonofleo_prod-YYYY-MM-DD.dump`), then
    `rclone copy local-crypt:postgres/sonofleo_prod/<file>.dump ~/restore/`
 5. `createdb sonofleo_restore && pg_restore --no-owner -d sonofleo_restore ~/restore/<file>.dump`
 
